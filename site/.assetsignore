@@ -1,0 +1,8 @@
+# Files in this folder that are not the site. Cloudflare reads this list and
+# leaves them out of the upload.
+serve.mjs
+README.md
+wrangler.jsonc
+.assetsignore
+install.test.ts
+vitest.config.ts

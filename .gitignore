@@ -1,0 +1,11 @@
+node_modules
+dist
+.playwright
+fixtures/out
+demo/out
+packages/extension/store
+*.tgz
+test-results
+playwright-report
+.DS_Store
+/docs/

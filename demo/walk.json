@@ -1,0 +1,168 @@
+{
+  "walk": {
+    "project": "lamppost",
+    "title": "Lamppost 2.4",
+    "buildRef": "lp-24",
+    "brief": "Lamppost is a status page. This build adds the maintenance lock and the API key page. Start on the home page; the lamps should all be green."
+  },
+  "groups": [
+    {
+      "name": "home and lamps",
+      "items": [
+        {
+          "id": "lp-lamps",
+          "kind": "look",
+          "owner": "demo",
+          "title": "The lamps are green",
+          "url": "http://127.0.0.1:9350/",
+          "target": {
+            "walkId": "lamps"
+          },
+          "do": "Look at the row of lamps.",
+          "see": "Five lamps, all green, each with its service name under it.",
+          "pass": "Every lamp is green and none is missing a name.",
+          "expect": [
+            {
+              "kind": "url",
+              "matches": "^http://127\\.0\\.0\\.1:9350/?$"
+            },
+            {
+              "kind": "text",
+              "css": "meta[name=build]",
+              "attr": "content",
+              "equals": "lp-24"
+            }
+          ]
+        },
+        {
+          "id": "lp-lock",
+          "kind": "sequence",
+          "owner": "demo",
+          "title": "The maintenance lock",
+          "url": "http://127.0.0.1:9350/dashboard",
+          "target": {
+            "walkId": "lock"
+          },
+          "steps": [
+            {
+              "do": "Turn Maintenance on.",
+              "see": "The lamps go amber and a banner says the page is under maintenance."
+            },
+            {
+              "do": "Press Post an update.",
+              "see": "Nothing happens: the button is off while the lock is on."
+            },
+            {
+              "do": "Turn Maintenance off.",
+              "see": "The lamps go green and the banner goes."
+            }
+          ],
+          "pass": "The lock holds while it is on and lets go when it is off.",
+          "expect": [
+            {
+              "kind": "url",
+              "matches": "^http://127\\.0\\.0\\.1:9350/dashboard"
+            }
+          ]
+        },
+        {
+          "id": "lp-tiers",
+          "kind": "question",
+          "owner": "demo",
+          "title": "What do we call the two paid tiers?",
+          "options": [
+            "Lit / Bright",
+            "Pro / Team",
+            "Basic / Plus"
+          ]
+        },
+        {
+          "id": "lp-history",
+          "kind": "look",
+          "owner": "demo",
+          "title": "Last week's incidents",
+          "url": "http://127.0.0.1:9350/history",
+          "target": {
+            "walkId": "incidents"
+          },
+          "do": "Read the incident list.",
+          "see": "Six incidents, newest first, each with a date and a lamp.",
+          "pass": "The list is there and the dates run newest to oldest.",
+          "expect": [
+            {
+              "kind": "text",
+              "css": "meta[name=build]",
+              "attr": "content",
+              "equals": "lp-24"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "items": [
+        {
+          "id": "lp-key",
+          "kind": "sequence",
+          "owner": "demo",
+          "title": "Paste the API key",
+          "url": "http://127.0.0.1:9350/settings",
+          "target": {
+            "walkId": "key"
+          },
+          "secrets": [
+            {
+              "label": "Demo API key",
+              "value": "lp_live_4f9c2a7e1d0b8c6e"
+            }
+          ],
+          "steps": [
+            {
+              "do": "Press Copy beside Demo API key, then paste it into the key field.",
+              "see": "The field fills with dots."
+            },
+            {
+              "do": "Press Verify.",
+              "see": "Key accepted."
+            }
+          ],
+          "pass": "Verify says the key was accepted.",
+          "expect": [
+            {
+              "kind": "url",
+              "matches": "^http://127\\.0\\.0\\.1:9350/settings"
+            }
+          ]
+        },
+        {
+          "id": "lp-share",
+          "kind": "look",
+          "owner": "demo",
+          "title": "The status link",
+          "url": "http://127.0.0.1:9350/dashboard",
+          "target": {
+            "walkId": "share"
+          },
+          "do": "Press Copy status link.",
+          "see": "The button reads Copied for a moment.",
+          "pass": "The link is on your clipboard."
+        },
+        {
+          "id": "lp-landed",
+          "kind": "info",
+          "owner": "demo",
+          "title": "Settings landed",
+          "body": "The settings page and the key check are in this build. Two cards above. The history page was rebuilt too: press Go on it again."
+        }
+      ]
+    }
+  ],
+  "ask": {
+    "id": "lp-ask",
+    "kind": "info",
+    "owner": "demo",
+    "title": "Yes, the slash is on purpose",
+    "body": "The status link ends with a slash so it matches the address bar exactly. Copy it as it is."
+  }
+}

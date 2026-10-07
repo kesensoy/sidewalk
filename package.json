@@ -1,0 +1,32 @@
+{
+  "name": "sidewalk",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/walkd -w packages/sidewalk-mcp -w packages/extension",
+    "start": "node packages/walkd/bin/walkd.js serve",
+    "version:check": "node scripts/version.mjs check",
+    "pack:check": "npm run version:check && node scripts/pack-check.mjs",
+    "pretest": "npm run version:check",
+    "test": "vitest run",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "package": "node packages/extension/scripts/package.mjs",
+    "screenshots": "node packages/extension/scripts/screenshots.mjs",
+    "firefox-check": "node packages/extension/scripts/firefox-check.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@xterm/xterm": "^6.0.0",
+    "ghost-cursor": "^1.4.2",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.10",
+    "web-ext": "^10.7.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

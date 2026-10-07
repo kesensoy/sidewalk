@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The one page whose build id is served, not written: serve.mjs swaps the
+     placeholder for its current history build, which starts at lp-23 and
+     catches up when the launcher rebuilds it. -->
+<meta name="build" content="__HISTORY_BUILD__">
+<title>Lamppost — History</title>
+<script>try { const t = localStorage.getItem("lp-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <a class="brand" href="/">Lamppost</a>
+    <nav class="site-nav">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/history" aria-current="page">History</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>History</h1>
+
+    <ol class="incidents" data-walk="incidents">
+      <li><span class="bulb" data-state="amber"></span><span class="date">2026-09-14</span><span>Webhooks delayed up to four minutes</span></li>
+      <li><span class="bulb" data-state="green"></span><span class="date">2026-09-12</span><span>Search index rebuilt</span></li>
+      <li><span class="bulb" data-state="red"></span><span class="date">2026-09-10</span><span>API errors for eleven minutes</span></li>
+      <li><span class="bulb" data-state="amber"></span><span class="date">2026-09-08</span><span>Dashboard slow to load</span></li>
+      <li><span class="bulb" data-state="green"></span><span class="date">2026-09-05</span><span>Email sending restored</span></li>
+      <li><span class="bulb" data-state="amber"></span><span class="date">2026-09-02</span><span>Search cluster taken down for maintenance</span></li>
+    </ol>
+  </main>
+</div>
+</body>
+</html>

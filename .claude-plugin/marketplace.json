@@ -1,0 +1,12 @@
+{
+  "name": "sidewalk",
+  "description": "sidewalk, from its own repository.",
+  "owner": { "name": "Kevin Esensoy", "url": "https://github.com/kesensoy" },
+  "plugins": [
+    {
+      "name": "sidewalk",
+      "source": ".",
+      "description": "Walk what your agent built, in a Chrome side panel. Adds the sidewalk MCP server and the walk-author skill."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>agent session</title>
+<!-- xterm's own stylesheet, served from node_modules by demo/agent/serve.mjs.
+     Nothing on this page is ever fetched from the network. -->
+<link rel="stylesheet" href="xterm.css">
+<style>
+  /* Every colour and every measurement on this page is set from
+     demo/agent/theme.js by agent.js, so the theme really is one file. What is
+     here is only the shape: a page the size the camera films, and one box
+     inside it at the rectangle the cut crops to. */
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+  #stage { position: absolute; inset: 0; }
+  /* The crop. Its position and size come from FRAME in the theme file. */
+  #box { position: absolute; overflow: hidden; }
+  /* xterm draws its own background; the box's is only for the padding ring. */
+  #term { width: 100%; height: 100%; }
+  .xterm .xterm-viewport { overflow: hidden; }
+  /* No scrollbar on camera. The buffer still scrolls; nothing draws a bar. */
+  .xterm-viewport::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="box"><div id="term"></div></div></div>
+<script type="module" src="agent.js"></script>
+</body>
+</html>

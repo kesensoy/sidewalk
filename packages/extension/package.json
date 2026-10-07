@@ -1,0 +1,13 @@
+{
+  "name": "@sidewalk/extension",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "npm run typecheck && node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "dependencies": { "sidewalk-walkd": "1.0.2" },
+  "devDependencies": { "@types/chrome": "^0.1.0", "esbuild": "^0.25.0", "happy-dom": "^20.8.9" }
+}

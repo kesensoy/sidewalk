@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>sidewalk</title>
+<meta name="description" content="Walk what your agent built, in a side panel.">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="preload" href="/fonts/atkinson-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/atkinson-700-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
+<script src="/site.js" defer></script>
+</head>
+<body>
+<!-- The clips live in the sidewalk-assets bucket. Their base URL is set once,
+     in _redirects: /clips/<path> sends the browser there. -->
+<main class="page">
+
+  <header class="top">
+    <p class="brand">
+      <svg class="tile" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="sidewalk mark"><defs><clipPath id="tile"><rect width="48" height="48" rx="5"/></clipPath></defs><rect width="48" height="48" rx="5" fill="#1e1f1c"/><g clip-path="url(#tile)"><polygon points="6,52 12,52 21.7,9.7 18.4,9.7" fill="#1f4fbf"/><polygon points="18,52 44,52 42.2,37.3 20.4,37.3" fill="#e4e3de"/><polygon points="21.3,31.8 41.6,31.8 40.4,21.6 23,21.6" fill="#e4e3de"/><polygon points="23.7,17 39.8,17 38.9,9.7 24.9,9.7" fill="#e4e3de"/></g></svg>
+      <span class="name">sidewalk</span>
+    </p>
+    <h1>Walk what your agent built, in a side panel.</h1>
+  </header>
+
+  <!-- The whole loop first. The gif is the page's heaviest file, so a still of
+       its first frame (stills/, in the repo) paints in the same box at once and
+       the gif arrives over it. -->
+  <article class="card current hero">
+    <div class="frame">
+      <picture class="still">
+        <source media="(prefers-color-scheme: dark)" srcset="/stills/dark/agent.jpg">
+        <img src="/stills/agent.jpg" width="1920" height="1080" alt="" aria-hidden="true">
+      </picture>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/clips/dark/agent.gif">
+        <img src="/clips/agent.gif" width="1920" height="1080" fetchpriority="high" alt="A terminal on the left shows an agent calling walk_open and walk_add_items, and the four cards appear in the side panel on the right as the result prints. A pass comes back to the terminal as a verdict, then a question with its reply line, and the agent's answer lands on the card.">
+      </picture>
+    </div>
+    <p class="caption">The agent writes the walk through an MCP. Your answers come back to it as data.</p>
+  </article>
+
+  <p class="lede">Your agent builds something, then writes the checklist for you to walk. Cards open in a Chrome side panel next to the live site. Each one says where to go and what to look for. Answer it, and the answer goes back to the agent with a screenshot and your exact words.</p>
+
+  <!-- Five clips, one at a time. The strip is hidden until site.js wires it;
+       without script all five stack, each lazily loaded. -->
+  <section class="clips" aria-labelledby="clips-h">
+    <h2 id="clips-h">What a card can do</h2>
+
+    <div class="strip" role="tablist" aria-label="What a card can do" hidden>
+      <button type="button" role="tab" id="tab-go" aria-controls="clip-go" aria-selected="true">Go</button>
+      <button type="button" role="tab" id="tab-sequence" aria-controls="clip-sequence" aria-selected="false" tabindex="-1">A sequence</button>
+      <button type="button" role="tab" id="tab-undo" aria-controls="clip-undo" aria-selected="false" tabindex="-1">Undo</button>
+      <button type="button" role="tab" id="tab-secrets" aria-controls="clip-secrets" aria-selected="false" tabindex="-1">Secrets</button>
+      <button type="button" role="tab" id="tab-ask" aria-controls="clip-ask" aria-selected="false" tabindex="-1">Ask</button>
+    </div>
+
+    <article class="card clip" id="clip-go" role="tabpanel" aria-labelledby="tab-go">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/clips/dark/go.gif">
+        <img src="/clips/go.gif" width="1920" height="1080" loading="lazy" alt="The side panel on the right shows a card titled The lamps are green. Go is pressed, the status page on the left opens, and the row of lamps is outlined.">
+      </picture>
+      <p class="caption">Press Go. It opens the page and points at the thing to check.</p>
+    </article>
+
+    <article class="card clip" id="clip-sequence" role="tabpanel" aria-labelledby="tab-sequence">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/clips/dark/sequence.gif">
+        <img src="/clips/sequence.gif" width="1920" height="1080" loading="lazy" alt="A card with three steps about a maintenance lock. Each step is ticked as the lamps on the left go amber and back to green, then Issue is pressed with a note.">
+      </picture>
+      <p class="caption">Tick each step as it works. If one breaks, say where.</p>
+    </article>
+
+    <article class="card clip" id="clip-undo" role="tabpanel" aria-labelledby="tab-undo">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/clips/dark/undo.gif">
+        <img src="/clips/undo.gif" width="1920" height="1080" loading="lazy" alt="Two answers sit at the bottom of the pane with green Undo buttons. One is pressed and its card returns. The other's Undo turns red when the agent reads it, and the card drops to the Done shelf.">
+      </picture>
+      <p class="caption">Every answer has an Undo.</p>
+    </article>
+
+    <article class="card clip" id="clip-secrets" role="tabpanel" aria-labelledby="tab-secrets">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/clips/dark/secrets.gif">
+        <img src="/clips/secrets.gif" width="1920" height="1080" loading="lazy" alt="A card titled Paste the API key with a row of dots and a Copy button. Copy is pressed, the key is pasted into the settings page on the left, and Verify says the key was accepted.">
+      </picture>
+      <p class="caption">Secrets stay out of the chat and out of the screenshots.</p>
+    </article>
+
+    <article class="card clip" id="clip-ask" role="tabpanel" aria-labelledby="tab-ask">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/clips/dark/ask.gif">
+        <img src="/clips/ask.gif" width="1920" height="1080" loading="lazy" alt="Ask is pressed on a card and a question typed. The card reads Asked, waiting for the agent, and after a pause the answer appears on the same card in place of that line.">
+      </picture>
+      <p class="caption">Ask a question. The answer lands on the card.</p>
+    </article>
+  </section>
+
+  <section class="install" aria-labelledby="install-h">
+    <h2 id="install-h">Install</h2>
+    <p>Node 22 and Chrome. Two lines:</p>
+    <pre><code>npx -y sidewalk-walkd serve</code></pre>
+    <pre><code>claude mcp add --scope user sidewalk -- npx -y sidewalk-mcp</code></pre>
+    <p>Or one line, which does both and says what is left:</p>
+    <pre><code>curl -fsSL https://sidewalk.sh/install | sh</code></pre>
+    <p>The extension is loaded unpacked until it is in the Chrome Web Store. <a href="https://github.com/kesensoy/sidewalk#install">The README</a> has the steps.</p>
+  </section>
+
+  <section class="limits" aria-labelledby="limits-h">
+    <h2 id="limits-h">Limits</h2>
+    <p>The daemon listens on loopback only. It answers only a caller that has the token it makes when it starts. <a href="https://github.com/kesensoy/sidewalk#limits">More in the README</a>.</p>
+  </section>
+
+  <footer class="foot">
+    <a href="https://github.com/kesensoy/sidewalk">github.com/kesensoy/sidewalk</a>
+    <a href="/privacy">Privacy</a>
+    <span>MIT, see <a href="https://github.com/kesensoy/sidewalk/blob/main/LICENSE">LICENSE</a>.</span>
+  </footer>
+
+</main>
+</body>
+</html>

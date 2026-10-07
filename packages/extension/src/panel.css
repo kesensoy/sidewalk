@@ -1,0 +1,405 @@
+/* Kerb, v3.
+ *
+ * Flat slabs on a concrete ground, a 4 px painted kerb down each card's left
+ * edge carrying its state, the Done shelf stamping verdicts in a gutter, and
+ * answered cards shrunk to one line. Two things breathe; nothing else moves.
+ *
+ * The face travels with the extension: Atkinson Hyperlegible, OFL, bundled as
+ * woff2 under fonts/ (see fonts/OFL.txt). Nothing here is ever fetched.
+ */
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/atkinson-400-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/atkinson-400-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/atkinson-700-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/atkinson-700-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/atkinson-400i-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/atkinson-400i-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+
+/* ---------- the palette: eleven values a theme, five of them hues ---------- */
+/* The fifth hue is `waiting`, a yellow for the card whose question is with the
+   agent. It is a hue of its own and not a tint of blocked: it has to read as
+   yellow with the blocked orange one card away, so it sits at hue 47 against
+   the orange's 30. Light is the lighter of the two edges (2.0:1 on the slab to
+   the orange's 2.7) on purpose — a yellow dark enough to match the orange's
+   weight on a cream slab stops reading as yellow and starts reading as olive,
+   and between the two, being the colour the owner asked for wins. Dark has no such
+   trouble: on wet asphalt the yellow is the brighter edge of the two. */
+:root{
+  color-scheme:light;
+  --ground:#e4e3de; --slab:#f4f3ef; --well:#ffffff; --ink:#1e1f1c; --muted:#66675f;
+  --edge:#9d9e97; --rule:#c9c8c2; --accent:#1f4fbf; --on-accent:#ffffff;
+  --pass:#17784a; --issue:#c8322b; --blocked:#e07b15; --blocked-text:#c4650a;
+  --waiting:#d4a600;
+
+  --face:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  /* The only second family, and only where the text is a build hash or the
+     pane's own diagnostic. */
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  /* The gear's text size. Every size below is a multiple of the pane's base, so
+     one number moves the whole pane and the layout holds at 80 and at 150. */
+  --scale:1;
+  --base:calc(15.5px * var(--scale));
+  --t-title:calc(var(--base) * 1.226);   /* 19    walk title */
+  --t-card:calc(var(--base) * 1.065);    /* 16.5  card title */
+  --t-line:calc(var(--base) * 0.968);    /* 15    answered line */
+  --t-btn:calc(var(--base) * 0.935);     /* 14.5  buttons */
+  --t-label:calc(var(--base) * 0.871);   /* 13.5  labels, links */
+  --t-meta:calc(var(--base) * 0.839);    /* 13    meta, mono, group names */
+  --t-tag:calc(var(--base) * 0.806);     /* 12.5  the Recommended tag */
+
+  /* The Undo button's own height, in the same base as everything else: a label
+     line, its 3 px padding and its 1 px border, twice over. It is the tallest
+     thing on a one-line answered row, so it is that row's height — which is
+     what a shelf row opening out pins its gutter mark to (see the Done shelf). */
+  --undo-row:calc(var(--t-label) * 1.2 + 8px);
+  /* One ledge row: that Undo inside the answered card's 7 px top and bottom,
+     plus the 1 px to the next row. Three of these is how tall the ledge is
+     allowed to get. */
+  --ledge-row:calc(var(--undo-row) + 14px + 1px);
+}
+/* The pane follows Chrome's theme; there is no toggle. Dark is wet asphalt. */
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --ground:#26272a; --slab:#333438; --well:#2b2c30; --ink:#f0efe9; --muted:#a1a2a8;
+    --edge:#6c6d73; --rule:#3b3c41; --accent:#8fb0ff; --on-accent:#101216;
+    --pass:#4fc97c; --issue:#ff6b60; --blocked:#ffa033; --blocked-text:#ffa033;
+    --waiting:#ffd633;
+  }
+}
+
+*{box-sizing:border-box}
+/* The pane's scroller does not anchor. Scroll anchoring is for keeping your place
+   when something *above* you changes height, and the pane has nothing that does:
+   a repaint replaces the whole of `#walks`, which leaves anchoring no node to
+   keep. What it does see is a shelf row opening out under the pointer — and with
+   the pane scrolled to its end, which is where the Done shelf is, it answers
+   that growth by scrolling down by exactly as much, sliding the row and the red
+   Undo on it up out from under the hand reaching for it. */
+html{background:var(--ground);overflow-anchor:none}
+body{
+  margin:0;padding:12px 12px 18px;min-height:100vh;
+  background:var(--ground);color:var(--ink);
+  font-family:var(--face);font-size:var(--base);line-height:1.45;
+  display:flex;flex-direction:column;
+}
+p,h1,h2,h3,h4,dl,dd,ol,ul{margin:0}
+:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+
+/* ---------- the band: the pane's own line, above the walk ---------- */
+/* The owner, 2026-10-06: "i'm thinking the 'Connected to walkd on 8760' line should
+   be tastefully distinguished from the walks like the ledge below is, at least
+   in spirit … maybe just a background color darken/shift is enough."
+
+   The ledge is the pane's strip along the bottom; this is its strip along the
+   top, and the two are the pane's chrome — what belongs to the pane and not to
+   the walk. The ledge sits on the ground behind a hairline. The band takes one
+   step off the ground, toward the ink: darker on concrete, lighter on wet
+   asphalt, from the same two values each theme already has, so the palette
+   stays at eleven. The words on it take the same step, muted toward ink, and so
+   stand off the band by what they stood off the ground by (4.5:1 at the meta
+   size in both themes). Nothing else changes about them: same size, same dot.
+
+   It bleeds to the pane's edges through the body's padding, which no slab does,
+   and it has no corner and no kerb: a slab is a thing on the ground, and this is
+   not on the ground. The hairline where it meets the walk is the ledge's, in the
+   edge grey. Sticky to the top the way the ledge is to the bottom, so the port,
+   the counts and the gear are there wherever the walk is scrolled to — for no
+   script and no new node. The gear's settings open inside the band, under their
+   own hairline: they are the pane's too. */
+:root{
+  --band:color-mix(in srgb,var(--ground) 92%,var(--ink));
+  --on-band:color-mix(in srgb,var(--muted) 85%,var(--ink));
+}
+/* Dark's ground is 13 units under its slab, so the 8 % step that reads on
+   concrete lands on the slab colour on asphalt; 12 % clears it. */
+@media (prefers-color-scheme: dark){:root{--band:color-mix(in srgb,var(--ground) 88%,var(--ink))}}
+#bar{
+  position:sticky;top:env(safe-area-inset-top,0px);z-index:1;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin:-12px -12px 2px;padding:7px 12px;
+  background:var(--band);border-bottom:1px solid var(--edge);
+}
+#status{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--t-meta);color:var(--on-band)}
+#settings{border:0;background:none;padding:2px;color:var(--on-band);flex:none}
+#settings svg{width:18px;height:18px;display:block}
+/* `display:flex` from an author sheet beats the browser's own [hidden] rule
+   whatever the specificity, so the gear's toggle set `hidden` on a section that
+   stayed on screen. Settings were always open; the button did nothing. */
+#prefs{
+  display:grid;gap:6px;margin:-2px -12px 2px;padding:6px 12px 8px;
+  background:var(--band);border-bottom:1px solid var(--edge);
+  font-size:var(--t-label);color:var(--on-band);
+}
+#prefs[hidden]{display:none}
+/* One row per setting, each wrapping rather than overflowing at 360 px. */
+#prefs .row{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+#prefs button{min-width:2.2em;padding:2px 8px}
+/* The setting that is on is filled, the way Go is: the pane has exactly one
+   accent, and "this is the state you are in" is what it is for. */
+#prefs button.on{background:var(--accent);color:var(--on-accent);border-color:transparent}
+/* The token field. `min-width:0` is what lets it shrink inside the flex row
+   rather than push Save off a 360 px pane; `type="password"` in the markup
+   because it is a credential on screen, and the pane never shows one of those
+   in plain text. */
+#prefs input{flex:1 1 7em;min-width:0;padding:3px 6px;font-family:var(--mono);font-size:var(--t-meta);
+  border:1px solid var(--edge);border-radius:2px;background:var(--well);color:var(--ink)}
+#prefs input::placeholder{color:var(--muted);font-family:var(--face)}
+/* What the Save said. Muted while it is asking, and muted for the two ends that
+   are not a verdict on the token; green only once the daemon has let the pane in,
+   red when it refused. `font-style:normal` because the `.pass` class elsewhere on
+   the pane is an italic pass line, and this is neither. */
+#prefs #token-said{color:var(--muted);font-style:normal}
+#prefs #token-said.pass{color:var(--pass)}
+#prefs #token-said.issue{color:var(--issue)}
+header{display:grid;gap:1px;padding:10px 0 2px}
+header h1{font-size:var(--t-title);font-weight:700;line-height:1.2}
+header .meta code{font-family:var(--mono);font-size:var(--t-meta);color:var(--muted)}
+/* The walk's brief: the agent's orientation text, under the title, above every
+   group. `pre-line` keeps a paragraph break as a break and collapses the rest. */
+header .brief{margin:6px 0 0;font-size:var(--t-line);line-height:1.45;color:var(--ink);white-space:pre-line}
+/* Labels and group names are lowercase and bold, never capitals: capitals at
+   13 px are the slowest thing to read from the corner of an eye. */
+.group h2{margin:8px 0 4px;font-size:var(--t-meta);font-weight:700;color:var(--muted)}
+#walks{flex:1;display:flex;flex-direction:column}
+
+/* ---------- the slab, and its kerb ---------- */
+.item{
+  display:grid;gap:8px;margin:0 0 6px;
+  background:var(--slab);border-radius:2px;padding:10px 12px 12px;
+  /* 4 px always, painted the slab colour when the card has no state, so a state
+     arriving never moves the text. */
+  border-left:4px solid var(--slab);
+}
+.item h3{font-size:var(--t-card);font-weight:700;line-height:1.3}
+.item.v-pass{border-left-color:var(--pass)}
+.item.v-issue{border-left-color:var(--issue)}
+.item.v-skip,.item.v-dismiss{border-left-color:var(--edge)}
+.item.v-decision{border-left-color:var(--ink)}
+/* Current is the card whose Go was pressed last — one per walk — and it breathes
+   in colour, never in width, so the text never shifts. `--kerb-breath` is the
+   colour the one kerb animation breathes; the card that sets it decides. */
+.item.current{--kerb-breath:var(--accent);border-left-color:var(--accent);animation:kerb 3.2s cubic-bezier(.45,0,.55,1) infinite alternate}
+/* Waiting is a card whose question is with the agent (render.ts: the Asked
+   line). Yellow outranks blue on the same card and breathes at the same 3.2 s
+   on the same easing, so the pane has one way of saying alive — and the state
+   the person is waiting on is the one the edge reports. */
+.item.waiting{--kerb-breath:var(--waiting);border-left-color:var(--waiting);animation:kerb 3.2s cubic-bezier(.45,0,.55,1) infinite alternate}
+/* Orange outranks blue and yellow on the same card: the pane already knows
+   where you are and what you are waiting for, and "not ready here" is the more
+   useful thing to say. Source order is the precedence — blocked last wins. */
+.item.blocked{border-left-color:var(--blocked);animation:none}
+
+/* ---------- the card's parts ---------- */
+.url{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.url a{font-size:var(--t-label);color:var(--accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;min-width:0}
+button{font-family:var(--face);font-size:var(--t-btn);font-weight:700;padding:6px 12px;border:1px solid var(--edge);border-radius:2px;background:var(--slab);color:var(--ink)}
+button:disabled{opacity:1;color:var(--muted);border-color:var(--rule)}
+.verdicts{display:flex;flex-wrap:wrap;gap:6px}
+.url button{flex:none;padding:6px 16px;background:var(--accent);color:var(--on-accent);border-color:transparent}
+dl{display:grid;grid-template-columns:minmax(44px,max-content) 1fr;gap:4px 8px}
+dt{font-size:var(--t-label);font-weight:700;color:var(--muted);padding-top:1px}
+.steps{list-style:none;padding:0;display:grid;gap:8px}
+.step label{display:grid;grid-template-columns:20px 1fr;gap:2px 8px;align-items:start}
+.step input{grid-column:1;grid-row:1;width:16px;height:16px;margin:2px 0 0;accent-color:var(--pass)}
+.step .do{grid-column:2}
+.step .see{grid-column:2;color:var(--muted)}
+.pass{font-style:italic;color:var(--muted)}
+.options{display:grid;gap:6px}
+.options label{display:flex;align-items:center;gap:8px}
+.options input{flex:none;width:16px;height:16px;margin:0;accent-color:var(--accent)}
+.tag{font-size:var(--t-tag);color:var(--muted)}
+textarea{
+  width:100%;min-height:56px;padding:8px 10px;resize:vertical;
+  font-family:var(--face);font-size:var(--t-btn);line-height:1.45;
+  border:1px solid var(--edge);border-radius:2px;background:var(--well);color:var(--ink);
+}
+textarea::placeholder{color:var(--muted)}
+/* `p`, not the bare class: `blocked` and `refused` are also states on the
+   article, and colouring those turned every word on the card orange or red. */
+p.blocked{font-weight:700;color:var(--blocked-text)}
+.diag{font-family:var(--mono);font-size:var(--t-meta);overflow-wrap:anywhere;opacity:.85}
+.diag code{font:inherit}
+p.refused{color:var(--issue)}
+/* The asked line carries the header's dot at its head, so the waiting reads at
+   the line as well as at the kerb. Flex for the same reason `#status` is flex:
+   the dot is 8 px of nothing until it is a flex item. */
+.asked{display:flex;align-items:center;gap:6px;font-size:var(--t-btn);color:var(--muted)}
+
+/* ---------- the agent's answer, inside the card that asked ---------- */
+/* The owner, 2026-10-04: "i like the new pending answer thing, but then when the
+   answer is there I think it should link to the card that asked it (instead of
+   letting a card be in between with its own dismiss) and I think the color
+   indication type stuff should stop looking like it's still pending/waiting, at
+   least in the same way, because it's still pending a person but not pending the
+   same thing anymore (claude in this case)."
+
+   So the block stands exactly where the asked line stood, and it says its state
+   the way everything else in this pane says one — with an edge. A thinner one, in
+   the ink a decision's kerb is painted, and a still one: the card's own 4 px has
+   gone back to meaning where you are (blue) or nothing at all, the yellow and its
+   dot have gone with the waiting, and this 2 px is what is left — answered, your
+   move. Nothing new moves; the pane still has exactly two animations.
+
+   The title is the card's own bold at the body's size — this is a block inside a
+   card, not a card — and the body is the style every other card's words use. No
+   label and no word of its own: the agent's title says what the answer is. */
+.reply{display:grid;gap:2px;padding-left:10px;border-left:2px solid var(--ink)}
+.reply h4{font-weight:700;line-height:1.3}
+
+/* ---------- a secret: a name, dots, and a button ---------- */
+/* The dots are a fixed run, so the row says a value exists and nothing about
+   what it is. The note lands in the row's own third line, under all of it. */
+.secrets{display:grid;gap:6px}
+.secret{display:grid;grid-template-columns:minmax(0,max-content) 1fr auto;align-items:center;gap:4px 8px}
+.secret .name{font-size:var(--t-label);font-weight:700;color:var(--muted)}
+.secret .dots{font-family:var(--mono);letter-spacing:.14em;color:var(--edge);min-width:0;overflow:hidden}
+.secret button{padding:3px 9px;font-size:var(--t-label)}
+.copied-note{grid-column:1/-1;font-size:var(--t-label);line-height:1.4;color:var(--muted)}
+
+/* ---------- the two notes: first run, and a daemon of another release ---------- */
+.note{padding:12px 14px;border:1px solid var(--edge);border-radius:8px;color:var(--muted);font-size:var(--t-line);line-height:1.45}
+.note h2{margin:0 0 6px;font-size:var(--t-line);font-weight:700;color:var(--ink)}
+.note p{margin:0 0 8px}
+.note .foot{margin:8px 0 0;font-size:var(--t-label)}
+.note .command{display:flex;align-items:center;gap:8px;min-width:0}
+.note .command code{flex:1;min-width:0;font-family:var(--mono);font-size:var(--t-label);overflow-wrap:anywhere;padding:6px 8px;border-radius:6px;background:var(--well)}
+.note .command button{padding:3px 9px;font-size:var(--t-label);flex:none}
+#notice:empty{display:none}
+#notice .note{margin:8px 12px 0}
+/* What came of the last Go, when nothing else can say it: a page the check
+   could not run on files no verdict at all, so this line is the only place the
+   press is accounted for. One line, muted, gone on the next press. */
+#said{margin:8px 12px 0;font-size:var(--t-label);line-height:1.45;color:var(--muted);overflow-wrap:anywhere}
+#walks .first-run{margin:12px}
+
+/* ---------- an answered card is one line ---------- */
+.item.answered{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 10px 7px 12px}
+.verdict{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--t-line)}
+.verdict b{font-weight:700}
+.item.v-pass .verdict b{color:var(--pass)}
+.item.v-issue .verdict b{color:var(--issue)}
+.item.v-skip .verdict b,.item.v-dismiss .verdict b{color:var(--muted)}
+.item.v-decision .verdict b{color:var(--ink)}
+/* The words trail off, not the verdict: they are already in the record and come
+   back into the note box on Undo. */
+.verdict .w,.verdict .far,.verdict s{color:var(--muted)}
+/* A withdrawn card's title is struck; the agent's reason is muted beside it.
+   (`.strike` is the reason's hook; the strike itself is on the title.) */
+.strike{color:var(--muted)}
+/* At the right end of the line, outlined in its colour, never filled — so a
+   row of answered cards does not become a column of green pills. */
+.undo{display:flex;flex-wrap:wrap;gap:6px}
+.undo button{padding:3px 9px;font-size:var(--t-label);background:transparent}
+.undo .free{color:var(--pass);border-color:var(--pass)}
+.undo .danger{color:var(--issue);border-color:var(--issue)}
+/* The one exception: the confirm's second Undo is the press that unwinds an
+   agent's work, and it should be the reddest thing on the pane. */
+.undo button[data-undo-confirm]{background:var(--issue);color:var(--on-accent);border-color:var(--issue)}
+.confirm{grid-column:1/-1;font-size:var(--t-btn);line-height:1.4}
+.confirm.held{font-weight:700;color:var(--issue)}
+.confirm ~ .undo{grid-column:1/-1}
+
+/* ---------- the ledge: what you just answered, pinned to the bottom ---------- */
+/* The owner, 2026-09-23, on the Lamppost demo: "there maybe needs to be an
+   intermediary step, where while the undo is still green like during that
+   cooldown period, where it'd maybe either collapse to one row for a bit, or
+   collapse and pin and stick to the screen for a bit." Both: the card leaves
+   the list at once, and its line pins here until the agent's read lands.
+
+   Last in the scroller and sticky to its bottom, so the list moves under it and
+   it does not. Ground-coloured, because what passes behind it must not show
+   through. No heading and no words of its own. */
+.ledge{
+  position:sticky;bottom:env(safe-area-inset-bottom,0px);
+  margin-top:14px;padding-top:6px;
+  background:var(--ground);border-top:1px solid var(--edge);
+  /* Three rows, then it scrolls inside itself — the ledge is a receipt, never
+     the pane. The 7 px is its own padding and rule, which the border box
+     counts. */
+  max-height:calc(var(--ledge-row) * 3 + 7px);overflow-y:auto;overscroll-behavior:contain;
+}
+/* The row is the answered card's line, unchanged — same padding, same kerb in
+   the verdict's colour, same green Undo at the right end. Only the slabs pack
+   tighter, 1 px of ground apart instead of 6. */
+.item.on-ledge{position:relative;margin:0 0 1px;border-radius:0}
+.item.on-ledge:last-child{margin-bottom:0}
+/* The window the free Undo has left, draining full → empty over the daemon's
+   grace: 2 px of pass green along the bottom of the row, inside the kerb. The
+   width is inline and a tick redraws it; an empty bar just stays empty, because
+   the row leaves when the read lands, not when the bar runs out. */
+.ledge .drain{position:absolute;left:0;bottom:0;height:2px;background:var(--pass)}
+
+/* ---------- the Done shelf: no slabs, a gutter, a line ---------- */
+.shelf{margin-top:14px}
+.shelf h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0;padding-top:8px;border-top:1px solid var(--edge)}
+.shelf h2 .count{font-weight:400}
+.item.done{
+  grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:6px 8px;
+  margin:0;padding:7px 0 7px 2px;border-left:0;border-radius:0;background:none;
+  border-bottom:1px solid var(--rule);
+}
+.item.done:last-child{border-bottom:0}
+.item.done .confirm,.item.done .confirm ~ .undo{grid-column:2/-1}
+/* The mark is the colour the kerb had while the card was live, so a green edge
+   becomes a green tick and the eye does not have to relearn anything. */
+.mark,.mark svg{display:block;width:18px;height:18px}
+.mark-pass{color:var(--pass)}
+.mark-issue{color:var(--issue)}
+.mark-skip,.mark-dismiss,.mark-withdrawn{color:var(--edge)}
+.mark-decision{color:var(--ink)}
+
+/* ---------- a shelf row opens out under the pointer ---------- */
+/* The owner, 2026-10-04: "when hovering over a line on the done ledge do you think
+   we can expand on hover to at least show the full untruncated title? If i'm
+   considering a red undo for example, I'll need to get some details on what it
+   was exactly."
+
+   Nothing is added and nothing new is said: the row's whole answered line is
+   already in the DOM — the title, how far a sequence got, the person's own
+   words — and the one line it was cut to is a clip this stylesheet put there.
+   Opening out lifts the clip, so the line wraps and the record reads in full
+   where it already stands. `:focus-within` as well as `:hover`, so tabbing to
+   the red Undo opens the same row a pointer would.
+
+   It opens downward, and the first line does not move: `align-items:start`
+   takes the row's three cells off centre as it grows, which leaves the Undo
+   exactly where the hand was reaching for it (on a one-line row the Undo *is*
+   the tallest cell, so centred and start are the same place), and the gutter
+   mark holds its place by sitting in a cell one Undo tall and centring inside
+   that instead of inside the row.
+
+   No transition. The spec's Motion section allows the pane two animations and
+   asks a third to earn it; neither of the two timings is a hover timing, and a
+   height transition would have to run against a max-height that clips the very
+   words the row opened to show. `overflow-wrap:anywhere` because the person's
+   words can be a url, and `overflow:hidden` stays on from the line above, so
+   nothing can reach past the pane either way. */
+.item.done:hover,.item.done:focus-within{align-items:start}
+.item.done:hover .verdict,.item.done:focus-within .verdict{white-space:normal;overflow-wrap:anywhere}
+.item.done:hover .mark,.item.done:focus-within .mark{height:var(--undo-row);display:grid;place-content:center}
+/* The answer the agent gave on this card is part of what the row opens out to
+   show: a verdict and the answer it was given under are one thing to read back,
+   and a red Undo is exactly when someone wants both. Closed, the row is still
+   one line — the block is in the DOM and out of the way. */
+.item.done .reply{display:none}
+.item.done:hover .reply,.item.done:focus-within .reply{display:grid;grid-column:2/-1}
+
+/* ---------- nothing to walk ---------- */
+.nothing{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
+.empty{margin:14px 0;font-size:var(--t-line);color:var(--muted)}
+
+/* ---------- the two pulses, and nothing else ---------- */
+/* Still two: a dot that breathes in opacity and a kerb that breathes in colour.
+   The waiting yellow borrows both rather than bringing a third — same periods,
+   same easing, same swing, so one more state does not add one more rhythm. */
+.dot{width:8px;height:8px;border-radius:50%;background:var(--edge);flex:none}
+.dot.on{background:var(--pass);animation:breathe 2.4s cubic-bezier(.45,0,.55,1) infinite alternate}
+.dot.waiting{background:var(--waiting);animation:breathe 2.4s cubic-bezier(.45,0,.55,1) infinite alternate}
+@keyframes breathe{from{opacity:1}to{opacity:.45}}
+/* The colour comes off the card as `--kerb-breath`, so the one animation serves
+   the blue current kerb and the yellow waiting one. */
+@keyframes kerb{from{border-left-color:var(--kerb-breath,var(--accent))}to{border-left-color:color-mix(in srgb,var(--kerb-breath,var(--accent)) 50%,var(--slab))}}
+/* Two periods, one easing, one property each — and all of it off when asked:
+   the dot stays its colour, the kerb stays its colour, nothing moves. */
+@media (prefers-reduced-motion: reduce){.dot.on,.dot.waiting,.item.current,.item.waiting{animation:none}}

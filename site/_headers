@@ -1,0 +1,21 @@
+# Response headers for the static assets, in one place. Cloudflare reads this
+# file for a Worker's static assets and applies its rules; it is not served
+# itself. `serve.mjs` reads the same file, so the local view answers with the
+# same types.
+#
+# /install is extensionless on purpose — `curl -fsSL https://sidewalk.sh/install
+# | sh` reads better than install.sh — so nothing infers its type from a
+# suffix. text/plain is what makes a browser show it instead of downloading it,
+# which is how a person reads the script before piping it to a shell.
+/install
+  content-type: text/plain; charset=utf-8
+
+# Every response. `nosniff` holds a file to the type above it. The policy is
+# what the two pages actually need and nothing else: their own stylesheet and
+# script, their own fonts, and the clips, which `_redirects` sends to
+# assets.sidewalk.sh. No inline style and no inline script anywhere on the
+# site, so neither needs an exception — `privacy.html`'s old <style> block is
+# the `.prose` rules at the end of `site.css` for that reason.
+/*
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'self'; img-src 'self' https://assets.sidewalk.sh; style-src 'self'; script-src 'self'; font-src 'self'

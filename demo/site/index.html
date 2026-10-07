@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="build" content="lp-24">
+<title>Lamppost</title>
+<script>try { const t = localStorage.getItem("lp-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <a class="brand" href="/">Lamppost</a>
+    <nav class="site-nav">
+      <a href="/" aria-current="page">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/history">History</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Every service, one row of lamps.</h1>
+
+    <div class="lamps" data-lamps data-walk="lamps"></div>
+
+    <p class="status-line">All systems normal.</p>
+
+    <p class="lede">Lamppost is the status page you paste one link to. When something breaks, the lamp goes amber, then red, and the people who care already know where to look.</p>
+  </main>
+</div>
+</body>
+</html>

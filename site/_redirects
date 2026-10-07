@@ -1,0 +1,4 @@
+# The clips' home, in one place. The page asks for /clips/<name>.gif and
+# /clips/dark/<name>.gif; this line sends the browser to the bucket at
+# assets.sidewalk.sh. To move the clips, change this line and nothing else.
+/clips/* https://assets.sidewalk.sh/:splat 302

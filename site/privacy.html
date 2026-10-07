@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>sidewalk — privacy</title>
+<meta name="description" content="What sidewalk stores, where it stores it, and what it sends. Nothing leaves your machine.">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="preload" href="/fonts/atkinson-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/atkinson-700-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
+<!-- One column of text, which index.html has no shape for. The rules are the
+     `.prose` block at the end of site.css, where they can be served under
+     `style-src 'self'`; this page held the site's only inline stylesheet. -->
+</head>
+<body>
+<main class="page prose">
+
+  <header class="top">
+    <p class="brand">
+      <a href="/" aria-label="sidewalk home"><svg class="tile" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="sidewalk mark"><defs><clipPath id="tile"><rect width="48" height="48" rx="5"/></clipPath></defs><rect width="48" height="48" rx="5" fill="#1e1f1c"/><g clip-path="url(#tile)"><polygon points="6,52 12,52 21.7,9.7 18.4,9.7" fill="#1f4fbf"/><polygon points="18,52 44,52 42.2,37.3 20.4,37.3" fill="#e4e3de"/><polygon points="21.3,31.8 41.6,31.8 40.4,21.6 23,21.6" fill="#e4e3de"/><polygon points="23.7,17 39.8,17 38.9,9.7 24.9,9.7" fill="#e4e3de"/></g></svg></a>
+      <span class="name">sidewalk</span>
+    </p>
+    <h1>Privacy policy</h1>
+  </header>
+
+  <p class="lede"><strong>sidewalk</strong> is a browser extension. It shows cards written by an AI agent in a side panel beside the page they are about, and sends your answers to that agent.</p>
+
+  <p>It talks to one program: <code>walkd</code>, which you install and run on your own machine, at <code>127.0.0.1</code>. There is no sidewalk server, no account, and no analytics. Nothing is sent anywhere else.</p>
+
+  <section>
+    <h2>What an answer carries</h2>
+    <p>What you typed and pressed, the address of the page you were on, recent console errors and warnings from that page, the text of one page element when a card asks for it to be checked, and a screenshot of the visible tab. Under the gear you can limit screenshots to issues, or turn them off. All of it goes to <code>walkd</code> on your machine.</p>
+  </section>
+
+  <section>
+    <h2>What is stored</h2>
+    <p>In your browser: the daemon's port and token, the pane's settings, how far you have read, and an answer that is waiting to be sent.</p>
+    <p>On your disk, written by <code>walkd</code> under your own user's data folder: the walk, your answers, and their screenshots. Nothing is written into the project you are walking.</p>
+  </section>
+
+  <section>
+    <h2>Secrets on a card</h2>
+    <p>A card can carry a value for you to paste. <code>walkd</code> holds it in memory and does not write it to the record or into the page. Once you press Copy it is on your clipboard like anything else you copy. <code>walkd</code> answers only a caller that has its token, and a program that can read your files can read the token. Use demo keys and test accounts.</p>
+  </section>
+
+  <section>
+    <h2>Permissions</h2>
+    <p>Side panel, for the pane. Tabs and all sites, because a card can point at any address and the screenshot needs them. Active tab, so the screenshot still works on the page in front of you if you narrow the site access. Scripting, to check what a card names on the page, outline it when you press Go, and collect console lines. Storage, for the items above. Alarms, to look for <code>walkd</code>. Clipboard write on Firefox, for the Copy button.</p>
+  </section>
+
+  <section>
+    <h2>Questions</h2>
+    <p>Open an issue at <a href="https://github.com/kesensoy/sidewalk/issues">github.com/kesensoy/sidewalk/issues</a>. This policy lives with the code and changes with it.</p>
+  </section>
+
+  <footer class="foot">
+    <a href="https://github.com/kesensoy/sidewalk">github.com/kesensoy/sidewalk</a>
+    <span>MIT, see <a href="https://github.com/kesensoy/sidewalk/blob/main/LICENSE">LICENSE</a>.</span>
+  </footer>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,16 @@
+// sidewalk.sh as a Worker with static assets and no Worker code: this folder
+// is uploaded as is, `_redirects` is read by Cloudflare, nothing else runs.
+// No secrets, no bindings. `npx wrangler deploy` from this folder, on the owner's
+// word; see README.md beside this file.
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "sidewalk-site",
+  "compatibility_date": "2026-10-01",
+  // The site's address. `custom_domain` makes wrangler create the DNS record
+  // and the certificate in the zone on deploy; nothing is set by hand.
+  "routes": [{ "pattern": "sidewalk.sh", "custom_domain": true }],
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "none"
+  }
+}

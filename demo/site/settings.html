@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="build" content="lp-24">
+<title>Lamppost — Settings</title>
+<script>try { const t = localStorage.getItem("lp-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <a class="brand" href="/">Lamppost</a>
+    <nav class="site-nav">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/history">History</a>
+      <a href="/settings" aria-current="page">Settings</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Settings</h1>
+
+    <section>
+      <h2>API key</h2>
+      <div class="control-row">
+        <input type="password" id="key" data-walk="key" placeholder="Paste your key" autocomplete="off">
+        <button id="verify">Verify</button>
+      </div>
+      <p class="result" id="keyresult"></p>
+    </section>
+
+    <section>
+      <h2>Status link</h2>
+      <p class="mono" data-status-link></p>
+    </section>
+
+    <section>
+      <h2>Notifications</h2>
+      <div class="checks">
+        <label><input type="checkbox"> Email</label>
+        <label><input type="checkbox"> Webhook</label>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

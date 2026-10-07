@@ -1,0 +1,15 @@
+{
+  "name": "sidewalk",
+  "version": "1.0.2",
+  "description": "Walk what your agent built, in a Chrome side panel. Adds the sidewalk MCP server and the walk-author skill.",
+  "author": { "name": "Kevin Esensoy", "url": "https://github.com/kesensoy" },
+  "repository": "https://github.com/kesensoy/sidewalk",
+  "license": "MIT",
+  "keywords": ["walkthrough", "qa", "mcp", "agent", "chrome"],
+  "mcpServers": {
+    "sidewalk": {
+      "command": "npx",
+      "args": ["-y", "sidewalk-mcp@1.0.2"]
+    }
+  }
+}

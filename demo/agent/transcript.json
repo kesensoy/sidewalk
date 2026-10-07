@@ -1,0 +1,259 @@
+{
+  "note": "The terminal surface's copy. Tool names, argument shapes and result shapes are the real ones (packages/sidewalk-mcp/src/server.ts); the walk header, the group-A titles and the reply item's words are quoted from demo/walk.json; the reply line is what packages/sidewalk-mcp/src/ask.ts produces; the close summary is the one demo/run.mjs really files. JSON blocks are wrapped for the terminal's width and nothing else. Every number and every word of the person's own is the daemon's, through {{placeholders}} filled at record time — see demo/agent/transcript.mjs. The group-B add is deliberately NOT here: its arguments would put the pack's demo key on screen, so one prose line stands in its place. A block carrying \"todo\": \"TODO-COPY\" is prose waiting on the owner's own words; the marker never reaches the screen and a unit test holds it to that.",
+  "blocks": [
+    {
+      "name": "prompt",
+      "beat": "open",
+      "kind": "type",
+      "text": "Open a walk on the Lamppost build and add the first cards."
+    },
+    {
+      "name": "walk-open",
+      "beat": "open",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_open" },
+        { "tone": "arg", "text": "  { \"project\": \"lamppost\", \"title\": \"Lamppost 2.4\", \"buildRef\": \"lp-24\"," },
+        { "tone": "arg", "text": "    \"brief\": \"Lamppost is a status page. This build adds the maintenance lock" },
+        { "tone": "arg", "text": "              and the API key page. Start on the home page; the lamps should" },
+        { "tone": "arg", "text": "              all be green.\" }" },
+        { "tone": "result", "text": "{ \"id\": \"{{walk}}\" }" }
+      ]
+    },
+    {
+      "name": "add-group-a-call",
+      "beat": "open",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_add_items" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"items\": [" },
+        { "tone": "arg", "text": "      { \"id\": \"lp-lamps\", \"kind\": \"look\", \"title\": \"The lamps are green\", … }," },
+        { "tone": "arg", "text": "      { \"id\": \"lp-lock\", \"kind\": \"sequence\", \"title\": \"The maintenance lock\", … }," },
+        { "tone": "arg", "text": "      { \"id\": \"lp-tiers\", \"kind\": \"question\", \"title\": \"What do we call the two paid tiers?\", … }," },
+        { "tone": "arg", "text": "      { \"id\": \"lp-history\", \"kind\": \"look\", \"title\": \"Last week's incidents\", … } ] }" }
+      ]
+    },
+    {
+      "name": "add-group-a-result",
+      "beat": "open",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"seqs\": {{seqsA}} }" }
+      ]
+    },
+    {
+      "name": "prose-opened",
+      "beat": "open",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prose", "text": "Four cards are up. Waiting for you." }
+      ]
+    },
+    {
+      "name": "wait-1-call",
+      "beat": "open",
+      "kind": "print",
+      "open": true,
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_wait" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"after\": 0, \"timeoutMs\": 280000 }" },
+        { "tone": "spinner", "text": "{{spinner}}" }
+      ]
+    },
+    {
+      "name": "wait-1-result",
+      "beat": "agent-read-lamps",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"verdicts\": [" },
+        { "tone": "resultCont", "text": "  { \"seq\": {{passSeq}}, \"kind\": \"pass\", \"itemId\": \"lp-lamps\", \"text\": \"{{passText}}\"," },
+        { "tone": "resultCont", "text": "    \"screenshotPath\": \"…\" } ]," },
+        { "tone": "resultCont", "text": "  \"cursor\": {{cursor1}}, \"closed\": false }" }
+      ]
+    },
+    {
+      "name": "prose-lamps",
+      "beat": "agent-read-lamps",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prose", "text": "The lamps passed. The lock, the tiers and the incidents are still open." }
+      ]
+    },
+    {
+      "name": "wait-2-call",
+      "beat": "agent-read-lamps",
+      "kind": "print",
+      "open": true,
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_wait" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"after\": {{cursor1}}, \"timeoutMs\": 280000 }" },
+        { "tone": "spinner", "text": "{{spinner}}" }
+      ]
+    },
+    {
+      "name": "wait-2-result",
+      "beat": "agent-read",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"verdicts\": [" },
+        { "tone": "resultCont", "text": "  { \"seq\": {{blockedSeq}}, \"kind\": \"blocked\", \"itemId\": \"lp-history\"," },
+        { "tone": "resultCont", "text": "    \"text\": \"{{blockedText}}\"," },
+        { "tone": "resultCont", "text": "    \"screenshotPath\": \"…\" }," },
+        { "tone": "resultCont", "text": "  { \"seq\": {{issueSeq}}, \"kind\": \"issue\", \"itemId\": \"lp-lock\", \"steps\": {{issueSteps}}," },
+        { "tone": "resultCont", "text": "    \"text\": \"{{issueText}}\", \"screenshotPath\": \"…\" }," },
+        { "tone": "resultCont", "text": "  { \"seq\": {{tiersSeq}}, \"kind\": \"decision\", \"itemId\": \"lp-tiers\", \"text\": \"\"," },
+        { "tone": "resultCont", "text": "    \"option\": \"{{tiersOption}}\", \"screenshotPath\": \"…\" } ]," },
+        { "tone": "resultCont", "text": "  \"cursor\": {{cursor2}}, \"closed\": false }" }
+      ]
+    },
+    {
+      "name": "prose-read",
+      "beat": "agent-read",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prose", "text": "Three answers back. The history page is a build behind, so that card waits." },
+        { "tone": "prose", "text": "The lock broke at Post an update. The tiers are Lit / Bright." }
+      ]
+    },
+    {
+      "name": "prose-group-b",
+      "beat": "group-b",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prose", "text": "Group B is up: the key, the status link, a note." }
+      ]
+    },
+    {
+      "name": "wait-3-call",
+      "beat": "group-b",
+      "kind": "print",
+      "open": true,
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_wait" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"after\": {{cursor2}}, \"timeoutMs\": 280000 }" },
+        { "tone": "spinner", "text": "{{spinner}}" }
+      ]
+    },
+    {
+      "name": "wait-3-result",
+      "beat": "ask-share",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"verdicts\": [" },
+        { "tone": "resultCont", "text": "  { \"seq\": {{noteSeq}}, \"kind\": \"pass-note\", \"itemId\": \"lp-history\"," },
+        { "tone": "resultCont", "text": "    \"text\": \"{{noteText}}\", \"screenshotPath\": \"…\" }," },
+        { "tone": "resultCont", "text": "  { \"seq\": {{keySeq}}, \"kind\": \"pass\", \"itemId\": \"lp-key\", \"text\": \"\"," },
+        { "tone": "resultCont", "text": "    \"steps\": {{keySteps}}, \"screenshotPath\": \"…\" }," },
+        { "tone": "resultCont", "text": "  { \"seq\": {{askSeq}}, \"kind\": \"ask\", \"itemId\": \"lp-share\"," },
+        { "tone": "resultCont", "text": "    \"text\": \"{{askText}}\"," },
+        { "tone": "resultCont", "text": "    \"screenshotPath\": \"…\"," },
+        { "tone": "resultCont", "text": "    \"reply\": \"Answer in the pane: add an info or question item on this walk, in the" },
+        { "tone": "resultCont", "text": "              same group as lp-share, with supersedes set to lp-share. That is what" },
+        { "tone": "resultCont", "text": "              marks the ask answered. The person is reading the pane, not your chat.\"" },
+        { "tone": "resultCont", "text": "  } ], \"cursor\": {{cursor3}}, \"closed\": false }" }
+      ]
+    },
+    {
+      "name": "prose-answering",
+      "beat": "ask-share",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prose", "text": "You asked about the slash. Answering on the card." }
+      ]
+    },
+    {
+      "name": "add-reply-call",
+      "beat": "ask-share",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_add_items" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"items\": [" },
+        { "tone": "arg", "text": "      { \"id\": \"lp-ask-{{askSeq}}\", \"kind\": \"info\", \"supersedes\": \"lp-share\"," },
+        { "tone": "arg", "text": "        \"title\": \"Yes, the slash is on purpose\"," },
+        { "tone": "arg", "text": "        \"body\": \"The status link ends with a slash so it matches the address bar" },
+        { "tone": "arg", "text": "                 exactly. Copy it as it is.\" } ] }" }
+      ]
+    },
+    {
+      "name": "add-reply-result",
+      "beat": "ask-share",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"seqs\": {{seqsReply}} }" }
+      ]
+    },
+    {
+      "name": "wait-4-call",
+      "beat": "ask-share",
+      "kind": "print",
+      "open": true,
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_wait" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"after\": {{cursor3}}, \"timeoutMs\": 280000 }" },
+        { "tone": "spinner", "text": "{{spinner}}" }
+      ]
+    },
+    {
+      "name": "wait-4-result",
+      "beat": "agent-read-2",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"verdicts\": [" },
+        { "tone": "resultCont", "text": "  { \"seq\": {{sharePassSeq}}, \"kind\": \"pass\", \"itemId\": \"lp-share\", \"text\": \"\"," },
+        { "tone": "resultCont", "text": "    \"screenshotPath\": \"…\" }," },
+        { "tone": "resultCont", "text": "  { \"seq\": {{dismissSeq}}, \"kind\": \"dismiss\", \"itemId\": \"lp-landed\", \"text\": \"\"," },
+        { "tone": "resultCont", "text": "    \"screenshotPath\": \"…\" } ]," },
+        { "tone": "resultCont", "text": "  \"cursor\": {{cursor4}}, \"closed\": false }" }
+      ]
+    },
+    {
+      "name": "prose-done",
+      "beat": "agent-read-2",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prose", "text": "Every card is answered. Closing the walk." }
+      ]
+    },
+    {
+      "name": "close-call",
+      "beat": "closed",
+      "kind": "print",
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "tool", "text": "walk_close" },
+        { "tone": "arg", "text": "  { \"walk\": \"{{walk}}\", \"summary\": \"{{summary}}\" }" }
+      ]
+    },
+    {
+      "name": "close-result",
+      "beat": "closed",
+      "kind": "print",
+      "lines": [
+        { "tone": "result", "text": "{ \"id\": \"{{walk}}\", \"closedAt\": \"…\", \"summary\": \"{{summary}}\" }" }
+      ]
+    },
+    {
+      "name": "prompt-idle",
+      "beat": "closed",
+      "kind": "print",
+      "open": true,
+      "lines": [
+        { "tone": "blank", "text": "" },
+        { "tone": "prompt", "text": "" }
+      ]
+    }
+  ]
+}

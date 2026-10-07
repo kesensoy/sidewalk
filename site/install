@@ -1,0 +1,117 @@
+#!/bin/sh
+# sidewalk.sh/install — the one-line install.
+#
+#   curl -fsSL https://sidewalk.sh/install | sh
+#
+# POSIX sh, no colours, no sudo. Re-running it upgrades the two packages to the
+# current release and leaves everything else as it was. It
+# installs the two published packages globally with npm and, when `claude` is on
+# PATH, adds the MCP server to the user's own scope. Then it starts the daemon in
+# the background if nothing is answering — a daemon already running is left
+# exactly as it is — so that the one gesture left for the person is a paste, with
+# the token already on their clipboard. A global prefix it cannot write to is a
+# message, never an escalation.
+#
+# `_headers` beside this file serves it as text/plain so a person can read it
+# before piping it to sh. `site/install.test.ts` runs it under `sh -n` and under
+# a PATH of stub node / npm / claude, one run per branch.
+#
+# Every line this script prints is a sentence a person reads.
+set -eu
+
+say() { printf '%s\n' "$1"; }
+
+# --- Node and npm ------------------------------------------------------------
+
+if ! command -v node >/dev/null 2>&1; then
+  say "sidewalk needs Node 22 or newer. Install Node, then run this again."
+  exit 1
+fi
+
+node_version=$(node -v)
+node_major=${node_version#v}
+node_major=${node_major%%.*}
+case "$node_major" in
+  '' | *[!0-9]*) node_major=0 ;;
+esac
+if [ "$node_major" -lt 22 ]; then
+  say "sidewalk needs Node 22 or newer. This machine has $node_version."
+  exit 1
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  say "npm is not on this PATH. Install npm with Node, then run this again."
+  exit 1
+fi
+
+# --- The two packages, globally, as this user --------------------------------
+
+prefix=$(npm prefix -g 2>/dev/null || true)
+target="$prefix/lib/node_modules"
+[ -d "$target" ] || target="$prefix"
+if [ -z "$prefix" ] || [ ! -w "$target" ]; then
+  say "npm installs into $prefix, which this user cannot write to."
+  say "Nothing was installed, and this script will not ask for sudo."
+  say "Point npm at a folder you own, then run this again:"
+  say "  npm config set prefix ~/.npm-global"
+  say "  export PATH=\"\$HOME/.npm-global/bin:\$PATH\""
+  exit 1
+fi
+
+say "Installing sidewalk-walkd and sidewalk-mcp with npm."
+npm install -g sidewalk-walkd sidewalk-mcp
+
+# --- The MCP server ----------------------------------------------------------
+
+if command -v claude >/dev/null 2>&1; then
+  if claude mcp add --scope user sidewalk -- sidewalk-mcp; then
+    :
+  else
+    say "Claude Code did not add the server. Its own line above says why."
+    say "If it is already there, there is nothing to do. Otherwise:"
+    say "  claude mcp add --scope user sidewalk -- sidewalk-mcp"
+  fi
+else
+  say "Claude Code is not on this PATH. Add the server yourself:"
+  say "  claude mcp add --scope user sidewalk -- sidewalk-mcp"
+fi
+
+# --- The daemon, in the background -------------------------------------------
+#
+# `walkd status` exits non-zero when nothing is answering, which is the only
+# honest liveness test (a state file can outlive the process it describes). A
+# daemon that is already running is left exactly as it is: this script starts
+# one, and never restarts or stops one.
+#
+# `walkd start` detaches, and the token it minted is on the clipboard when it
+# returns — that is where the paste below comes from. A daemon that was already
+# running keeps the token it already had, so `walkd token --copy` is what puts
+# that one on the clipboard instead.
+#
+# Neither branch says where the token went: `walkd start` and `walkd token
+# --copy` each say that themselves, in one line, and they are the half that
+# knows whether this machine has a clipboard command at all.
+
+if ! command -v walkd >/dev/null 2>&1; then
+  say "walkd is installed but not on this PATH. Add npm's global bin folder to"
+  say "PATH, then start it yourself: walkd start"
+elif walkd status >/dev/null 2>&1; then
+  say "A walkd is already running; this script left it alone."
+  walkd token --copy || say "Run walkd token --copy when you want its token."
+else
+  say "Starting the daemon in the background."
+  if walkd start; then
+    :
+  else
+    say "walkd did not start. Its own line above says why."
+    say "walkd serve runs it in this terminal, where you can watch it."
+  fi
+fi
+
+# --- What is left for the person ---------------------------------------------
+
+say "Two things left:"
+say "1. Load the extension unpacked. It is not in the Chrome Web Store yet;"
+say "   github.com/kesensoy/sidewalk#install has the steps."
+say "2. Open the panel's gear, paste the token, Save. The daemon keeps that"
+say "   token across restarts, so you paste it once."
