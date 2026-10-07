@@ -202,7 +202,6 @@ then `claude plugin install sidewalk@sidewalk` installs the same server —
 `.claude-plugin/plugin.json` runs `npx -y sidewalk-mcp@<this release>`, with the
 pin held by `scripts/version.mjs` — and the walk-author skill with it, as
 `/sidewalk:walk-author`. The repository is both the marketplace and the plugin.
-Both of these wait on the repository being public.
 
 From a checkout, point the agent at the built entry instead. With Claude
 Code the one-liner is `claude mcp add --scope user sidewalk -- node <absolute

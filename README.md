@@ -51,10 +51,9 @@ claude mcp add --scope user sidewalk -- node /absolute/path/to/packages/sidewalk
 node packages/walkd/bin/walkd.js token --copy   # paste it into the panel's gear
 ```
 
-### Not yet
+### As a Claude Code plugin
 
-As a Claude Code plugin, once the repository is public. It adds the MCP server
-and the `walk-author` skill, with no file path:
+It adds the MCP server and the `walk-author` skill, with no file path:
 
 ```bash
 claude plugin marketplace add kesensoy/sidewalk
