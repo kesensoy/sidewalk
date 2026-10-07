@@ -6,8 +6,8 @@ and what to look for. Answer it, and the answer goes back to the agent with a
 screenshot and your exact words.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://assets.sidewalk.sh/dark/hero.gif">
-  <img alt="A terminal on the left shows an agent calling walk_open and walk_add_items, and the four cards appear in the side panel on the right as the result prints. A pass comes back to the terminal as a verdict, then a question with its reply line, and the agent's answer lands on the card." src="https://assets.sidewalk.sh/hero.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://assets.sidewalk.sh/dark/hero-readme.gif">
+  <img alt="A terminal on the left shows an agent calling walk_open and walk_add_items, and the four cards appear in the side panel on the right as the result prints. A pass comes back to the terminal as a verdict, then a question with its reply line, and the agent's answer lands on the card." src="https://assets.sidewalk.sh/hero-readme.gif">
 </picture>
 
 *The agent writes the walk through an MCP. Your answers come back to it as data.*
