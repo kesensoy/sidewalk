@@ -68,6 +68,40 @@ code{font-family:var(--mono);font-size:0.94em}
 .brand .name{font-size:calc(var(--base) * 1.3);font-weight:700;letter-spacing:-0.01em;line-height:1}
 h1{font-size:var(--t-h1);font-weight:700;line-height:1.12;letter-spacing:-0.015em;max-width:16em;text-wrap:balance}
 
+/* The mark on the left, the three places to get it on the right, the line
+   under both. The row wraps before it crowds the name: the links keep the
+   right edge on their own line. */
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px}
+
+/* ---------- where to get it: three links, the pane's outlined button ---------- */
+/* The same box the strip's buttons wear — 1 px edge, 2 px corner, the slab —
+   because it does the same job. The accent is not used here: on this page and
+   in the pane it means *current*, and a place to go is not a state. */
+.links{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.links a{
+  position:relative;
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 11px;border:1px solid var(--edge);border-radius:2px;
+  background:var(--slab);color:var(--ink);text-decoration:none;
+  font-size:var(--t-label);font-weight:700;line-height:1.35;
+}
+.links a:hover{border-color:var(--ink)}
+.links svg{width:17px;height:17px;flex:none}
+/* Submitted, not yet answered. The open edge is the whole of the state; the
+   link is real and goes to the listing. One class: take it off and it is live. */
+.links .is-pending{border-style:dashed;color:var(--muted)}
+.links .is-pending:hover{color:var(--ink);border-color:var(--muted)}
+/* The ring is currentColor everywhere on this site, so a focused pending link
+   comes up to full ink and the ring comes with it. */
+.links .is-pending:focus-visible{color:var(--ink)}
+/* On a phone the labels go to the screen reader and the glyphs carry the row. */
+@media (max-width: 480px){
+  .links a{gap:0;padding:6px 9px}
+  .links .label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}
+
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+
 /* ---------- a slab, and its kerb ---------- */
 .card{
   background:var(--slab);border-radius:2px;
