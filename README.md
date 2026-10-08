@@ -21,7 +21,7 @@ npx -y sidewalk-walkd serve
 claude mcp add --scope user sidewalk -- npx -y sidewalk-mcp
 ```
 
-Then the extension. It is loaded unpacked until it is in the Chrome Web Store. Build it from a checkout with `npx -y npm@11 install && npm run build`, then `chrome://extensions` → Developer mode → Load unpacked → `packages/extension/dist`.
+Then the extension: [sidewalk on the Chrome Web Store](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed). To build it from a checkout instead: `npx -y npm@11 install && npm run build`, then `chrome://extensions` → Developer mode → Load unpacked → `packages/extension/dist`.
 
 walkd makes a token the first time it starts and answers only a caller that has
 it. Your agent reads it from walkd's own folder. The panel cannot read files, so
@@ -75,7 +75,7 @@ Three pieces, one repo:
 | --- | --- |
 | `packages/walkd` | the local daemon; two append-only streams per walk, HTTP + SSE on `127.0.0.1:8760` |
 | `packages/sidewalk-mcp` | the MCP server an agent session launches; six tools: `walk_open`, `walk_add_items`, `walk_withdraw`, `walk_wait`, `walk_read`, `walk_close` |
-| `packages/extension` | the Chrome side panel (Manifest V3), loaded unpacked from `packages/extension/dist` |
+| `packages/extension` | the Chrome side panel (Manifest V3), on the Chrome Web Store or loaded unpacked from `packages/extension/dist` |
 
 ## What a card can do
 
@@ -159,7 +159,7 @@ value a card carries. Put demo keys and test accounts on a card, never a
 production credential. It writes only under your own user's data directory and
 never into a project repo. Safari and a shared daemon are not here. Firefox
 is: the same tree builds a sidebar add-on (`npm run package`), and it has been
-run against a real walk. Neither store has it yet.
+run against a real walk. Chrome has it [in its store](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed); the Firefox listing is under review.
 
 ## Read more
 

@@ -111,7 +111,7 @@ fi
 # --- What is left for the person ---------------------------------------------
 
 say "Two things left:"
-say "1. Load the extension unpacked. It is not in the Chrome Web Store yet;"
-say "   github.com/kesensoy/sidewalk#install has the steps."
+say "1. Add the extension from the Chrome Web Store:"
+say "   chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed"
 say "2. Open the panel's gear, paste the token, Save. The daemon keeps that"
 say "   token across restarts, so you paste it once."

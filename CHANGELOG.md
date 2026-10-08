@@ -21,7 +21,8 @@
 ## 1.0.0 — 2026-10-06 — the launch build
 
 The first build published to the registry, on 2026-10-07: `sidewalk-schema`,
-`sidewalk-walkd` and `sidewalk-mcp`. Not yet in either store.
+`sidewalk-walkd` and `sidewalk-mcp`. In the Chrome Web Store since 2026-10-08; the
+Firefox listing is under review.
 
 - **The daemon's package is `sidewalk-walkd`.** The registry refused `walkd`
   as too close to `walk` and `walker`, a rule it applies only at publish. The

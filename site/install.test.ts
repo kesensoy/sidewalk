@@ -113,7 +113,7 @@ describe("a machine with everything", () => {
     // walkd's own line about the pid comes through, and then the two steps.
     expect(out).toContain("running in the background");
     expect(out).toContain("Two things left:");
-    expect(out).toContain("Load the extension unpacked");
+    expect(out).toContain("Add the extension from the Chrome Web Store");
     expect(out).toContain("paste the token, Save");
   });
 
