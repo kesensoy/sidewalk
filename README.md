@@ -21,7 +21,7 @@ npx -y sidewalk-walkd serve
 claude mcp add --scope user sidewalk -- npx -y sidewalk-mcp
 ```
 
-Then the extension: [sidewalk on the Chrome Web Store](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed). To build it from a checkout instead: `npx -y npm@11 install && npm run build`, then `chrome://extensions` → Developer mode → Load unpacked → `packages/extension/dist`.
+Then the extension: [sidewalk on the Chrome Web Store](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed), or [the same add-on on Firefox](https://addons.mozilla.org/firefox/addon/sidewalk/). To build it from a checkout instead: `npx -y npm@11 install && npm run build`, then `chrome://extensions` → Developer mode → Load unpacked → `packages/extension/dist`.
 
 walkd makes a token the first time it starts and answers only a caller that has
 it. Your agent reads it from walkd's own folder. The panel cannot read files, so
@@ -159,7 +159,7 @@ value a card carries. Put demo keys and test accounts on a card, never a
 production credential. It writes only under your own user's data directory and
 never into a project repo. Safari and a shared daemon are not here. Firefox
 is: the same tree builds a sidebar add-on (`npm run package`), and it has been
-run against a real walk. Chrome has it [in its store](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed); the Firefox listing is under review.
+run against a real walk. Both stores have it: [Chrome](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed) and [Firefox](https://addons.mozilla.org/firefox/addon/sidewalk/).
 
 ## Read more
 
