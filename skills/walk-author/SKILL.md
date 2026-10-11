@@ -35,9 +35,10 @@ this build is, where to start, anything to know before the first card;
 reopening with a new brief replaces it → `walk_add_items` →
 `walk_wait(after: cursor, timeoutMs: 0)` whenever other work you are running
 reports back, and `walk_wait(…, timeoutMs: 280000)` when nothing else is
-running (loop on the returned cursor) → `walk_close` with a summary. Nothing
-can push to you: `walk_wait` is how you hear the person. Append items as work
-lands; do not hold the whole list back until everything is ready.
+running (loop on the returned cursor; longer waits time out at the transport)
+→ `walk_close` with a summary. Nothing can push to you: `walk_wait` is how
+you hear the person. Append items as work lands; do not hold the whole list
+back until everything is ready.
 
 An empty `walk_wait` is not news: call it again with the same cursor and say
 nothing. Never stop listening because of silence — the person walks at their
@@ -74,9 +75,8 @@ nobody.
   `blocked` verdict itself, naming what failed, instead of showing a broken
   item. A page that never answers files nothing. A `css` or `url` string the
   browser refuses files a `blocked` verdict carrying the browser's message, so
-  a typo in one comes back to you instead of going quiet. What a `text` expect
-  reports back — `seen`, and the `buildId` on every verdict — is cut off at 300
-  characters.
+  a typo in one comes back to you. What a `text` expect reports back —
+  `seen`, and the `buildId` on every verdict — is cut off at 300 characters.
 - `target` (`{ text }` / `{ css }` / `{ walkId }`) outlines the thing to look
   at after Go.
 - `group` is the feature or workstream the item belongs to; cards are grouped
@@ -109,8 +109,16 @@ nobody.
 
 - `text` is the person's words verbatim: quote it, never paraphrase or trim.
 - Kinds: `pass`, `pass-note`, `issue`, `skip`, `decision` (with `option`),
-  `dismiss`, `ask`, `undo` (unwind what was built on that decision; a fresh
-  decision follows), `blocked` (the pane's own, not the person's words).
+  `dismiss`, `ask`, `undo`, `blocked` (the pane's own, not the person's words).
+- A verdict reaches you about 10 seconds after the person files it: the
+  daemon's grace window, their time to take it back for free. `walk_wait`
+  wakes when it matures.
+- `undo`: the person took an answer back. If you receive one, you had already
+  been handed the answer it retracts (`retracts` is its seq): unwind whatever
+  you built on it and expect a fresh answer on the same item. An answer taken
+  back before any `walk_wait` or `walk_read` handed it to you is never
+  delivered at all, neither it nor its undo, so an item you never saw answered
+  simply was not.
 - `issue` verdicts carry `screenshotPath` (a file you can read), the page
   `url`, `buildId` when an expect read one, and the last 20 console
   errors/warnings.
