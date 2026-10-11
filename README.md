@@ -125,6 +125,10 @@ in the daemon's memory only: it is not in the walk's record, not in the pane's
 DOM, and not handed back to the agent that wrote it. On a card that carries
 one, what the page shows goes back to the agent as a length, not as words.
 
+**Demo keys and test accounts only, never a production credential.** The
+daemon's token is not a login: a program that can read your user's files can
+read a walk, or a value a card carries.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://assets.sidewalk.sh/dark/secrets.gif">
   <img alt="A card titled Paste the API key with a row of dots and a Copy button. Copy is pressed, the key is pasted into the settings page on the left, and Verify says the key was accepted." src="https://assets.sidewalk.sh/secrets.gif">
@@ -149,17 +153,6 @@ you wait, and the answer lands on the card itself, where the waiting line was.
 Everything the agent does goes through the MCP server, as the reel at the top
 shows. Your verdicts come back to it as data, your words verbatim, and a
 question of yours arrives with the line that tells it to answer in the pane.
-
-## Limits
-
-The daemon listens on loopback only. It answers only a caller that has the
-token it makes when it starts; that is a token, not a login, and not transport
-security. A program that can read your user's files can read a walk, or a
-value a card carries. Put demo keys and test accounts on a card, never a
-production credential. It writes only under your own user's data directory and
-never into a project repo. Safari and a shared daemon are not here. Firefox
-is: the same tree builds a sidebar add-on (`npm run package`), and it has been
-run against a real walk. Both stores have it: [Chrome](https://chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed) and [Firefox](https://addons.mozilla.org/firefox/addon/sidewalk/).
 
 ## Read more
 
