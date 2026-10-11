@@ -158,6 +158,14 @@ pre code{font-size:inherit}
   padding-top:14px;border-top:1px solid var(--edge);
   font-size:var(--t-label);color:var(--muted);
 }
+/* A heart at the row's far right. Quiet until the pointer or focus is on it,
+   then it says what it is for; the link itself goes to Ko-fi. */
+.foot .support{margin-left:auto;display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:var(--muted)}
+.foot .support .heart{font-size:1.05em;line-height:1}
+.foot .support .say{opacity:0;transition:opacity .15s}
+.foot .support:hover .say,.foot .support:focus-visible .say{opacity:1}
+.foot .support:hover,.foot .support:focus-visible{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){.foot .support .say{transition:none}}
 
 /* ---------- privacy: one column of text ---------- */
 /* Only `privacy.html` wears `.prose`; `index.html` has no shape for a page of
