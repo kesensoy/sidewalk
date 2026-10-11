@@ -44,18 +44,19 @@ product that used it.
 - **Verdict text is the person's words, verbatim.** No trimming beyond a
   trailing newline, no autocorrect in the pane, no paraphrase in the agent.
 - **The daemon writes nothing into any project repo.** Data lives under
-  `~/Library/Application Support/walkd/`; the agent's skill decides what a
-  ledger gets.
+  `~/Library/Application Support/walkd/`; the agent's own notes get its
+  decisions.
 - **Permissions posture**: least-needy where it costs nothing. Today
   `host_permissions: ["<all_urls>"]` is required — it is what makes screenshots
   always attach and Go never dead-end, and the store listing carries the
   justification. Any change to
   the manifest's permissions is a store-listing change: say so in the commit.
-- **Stores are the plan.** Keep `manifest.json`
-  store-clean: a real description, no debug permissions, `<all_urls>` with a
-  one-paragraph justification ready for review. The Firefox port is
-  `sidebar_action` plus the SSE client; do not let Chrome-only APIs creep into
-  `panel.ts` / `render.ts` without a note.
+- **Both store listings are live** (`CHANGELOG.md` has the dates). Keep
+  `manifest.json` store-clean: a real description, no debug permissions,
+  `<all_urls>` with its one-paragraph justification, because every manifest
+  change goes back through review. The Firefox port is `sidebar_action` plus
+  the SSE client; do not let Chrome-only APIs creep into `panel.ts` /
+  `render.ts` without a note.
 - **One version number.** The daemon and the MCP server read theirs from
   their own `package.json`; `npm test` fails if the three packages, their
   internal pins, the extension's manifest and the plugin manifest's
