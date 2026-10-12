@@ -334,21 +334,59 @@ export function renderVersionNotice(mine: string, theirs: string, port: number):
 
 /**
  * The daemon is right there and it refused us: it wants its token, and an
- * extension cannot read the file it keeps it in (secrets review). So the
- * one thing to say is where to get it and where to put it — the command, with a
- * Copy button, and the gear that takes what it prints.
+ * extension cannot read the file it keeps it in (secrets review). So there are
+ * two ways out of this notice, in the order most people will want them: press
+ * Connect and let the browser hand the question to walkd itself, or run the
+ * command and paste what it prints into the gear.
  *
  * It takes the notice slot the version warning uses, above the cards, because
  * nothing on the pane works until this is done.
  */
 export const TOKEN_COMMAND = "npx -y sidewalk-walkd token --copy";
 export const tokenNotice = (port: number) =>
-  `walkd on port ${port} will not let this panel in without its token. It keeps the same one across restarts, so this is asked once. Run this, then paste it into the gear above:`;
+  `walkd on port ${port} will not let this panel in without its token. Press Connect and allow the panel to talk to walkd; the browser asks once. If this browser cannot do that, run this and paste the token into the gear above:`;
 export const NEEDS_TOKEN_STATUS = "needs the token";
 export const needsTokenLine = (port: number) => `walkd on ${port} ${NEEDS_TOKEN_STATUS}`;
 
-export function renderTokenNotice(port: number): string {
+/**
+ * The Connect button, and what it is saying right now.
+ *
+ * The button comes first and the command second, because pressing it is what
+ * most people will do and the command is the fallback for a browser that cannot
+ * reach the host at all.
+ *
+ * The press has to be the person's own: `permissions.request` is refused
+ * outside a user action — Firefox says so in as many words
+ * ("permissions.request may only be called from a user input handler") — so
+ * there is no version of this the worker can do by itself. What the worker does
+ * is the asking of walkd, once the browser has allowed it, because the token
+ * must be stored by one code path and not two.
+ */
+export const CONNECT_LABEL = "Connect";
+export const CONNECT_ASKING = "Asking walkd…";
+export const CONNECT_REFUSED = "The browser did not allow it. Paste the token instead.";
+export const CONNECT_FAILED = "walkd did not answer through the browser. Paste the token instead.";
+/** What the pane is in the middle of, kept by the panel so a repaint does not lose it. */
+export type Connecting = "asking" | "refused" | "failed";
+
+export function connectSay(state: Connecting | undefined): { text: string; cls: "" | "issue" } | null {
+  switch (state) {
+    case "asking": return { text: CONNECT_ASKING, cls: "" };
+    // Neither of these is a fault of the person's, and neither is a dead end —
+    // the next line in the notice is the way through — so they are said in the
+    // issue colour and not in red type the pane keeps for a verdict.
+    case "refused": return { text: CONNECT_REFUSED, cls: "issue" };
+    case "failed": return { text: CONNECT_FAILED, cls: "issue" };
+    default: return null;
+  }
+}
+
+export function renderTokenNotice(port: number, connecting?: Connecting): string {
+  const say = connectSay(connecting);
   return `<section class="note token"><p>${esc(tokenNotice(port))}</p>` +
+    `<div class="connect"><button data-connect="1"${connecting === "asking" ? " disabled" : ""}>${CONNECT_LABEL}</button>` +
+    (say ? `<span class="said ${say.cls}" role="status">${esc(say.text)}</span>` : "") +
+    `</div>` +
     commandRow(TOKEN_COMMAND, `${COPY_LABEL} the token command`) + `</section>`;
 }
 

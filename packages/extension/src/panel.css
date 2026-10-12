@@ -265,6 +265,14 @@ p.refused{color:var(--issue)}
 .note .command{display:flex;align-items:center;gap:8px;min-width:0}
 .note .command code{flex:1;min-width:0;font-family:var(--mono);font-size:var(--t-label);overflow-wrap:anywhere;padding:6px 8px;border-radius:6px;background:var(--well)}
 .note .command button{padding:3px 9px;font-size:var(--t-label);flex:none}
+/* The needs-token note's own first row: the Connect button, and the one line
+   that says what came of pressing it. Above the command, because pressing it is
+   what most people will do and the command is the way through for a browser
+   that cannot reach walkd at all. */
+.note .connect{display:flex;align-items:center;gap:8px;min-width:0;margin:0 0 8px}
+.note .connect button{padding:3px 11px;font-size:var(--t-label);flex:none}
+.note .connect .said{min-width:0;font-size:var(--t-label);line-height:1.4;color:var(--muted)}
+.note .connect .said.issue{color:var(--issue)}
 #notice:empty{display:none}
 #notice .note{margin:8px 12px 0}
 /* What came of the last Go, when nothing else can say it: a page the check

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { INSTALL_COMMAND, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
+import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, INSTALL_COMMAND, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 
 const look = (id: string, seq: number, group?: string): Item => ({ id, seq, group, kind: "look", owner: "g", title: `T${id}`, url: "http://x/", do: "do", see: "see", pass: "pass", expect: [], addedAt: "2026-09-16T00:00:00Z" });
@@ -1047,17 +1047,58 @@ describe("first run and version notice", () => {
   // The daemon keeps its token in a file an extension cannot read, so this
   // notice says where to get it, and the first-run note says it exists at all
   // (secrets review).
-  it("the needs-token notice names the port and offers the command that prints it", () => {
+  it("the needs-token notice names the port, offers Connect first and the command second", () => {
     const html = renderTokenNotice(8761);
     expect(html).toContain('class="note token"');
     expect(html).toContain("walkd on port 8761 will not let this panel in without its token");
-    expect(html).toContain("paste it into the gear");
+    expect(html).toContain("Press Connect and allow the panel to talk to walkd");
+    expect(html).toContain("paste the token into the gear above");
+    expect(html).toContain(`>${CONNECT_LABEL}<`);
+    expect(html).toContain('data-connect="1"');
     expect(html).toContain(`<code>${TOKEN_COMMAND}</code>`);
     expect(html).toContain(`data-copy-text="${TOKEN_COMMAND}"`);
     expect(html).toContain('aria-label="Copy the token command"');
     expect(TOKEN_COMMAND).toBe("npx -y sidewalk-walkd token --copy");
-    // The notice holds no token, only the way to get one.
+    // The button is the first thing after the sentence, and the command after
+    // it: pressing is what most people will do, and the command is the way
+    // through for a browser that cannot reach walkd at all.
+    expect(html.indexOf('data-connect')).toBeLessThan(html.indexOf('<code>'));
+    // Nothing is said about a press that has not happened, and the button is
+    // pressable.
+    expect(html).not.toContain('class="said');
+    expect(html).not.toContain("disabled");
+    // The notice holds no token, only the two ways to one.
     expect(html).not.toMatch(/Bearer/);
+  });
+
+  /**
+   * The permission needs the person's own click, so the three ends of a press
+   * are the pane's to say. All of the host's own reasons land on one line —
+   * four of the likeliest mistakes report the same sentence to the browser
+   * (verified 2026-10-12), so telling them apart on screen would be a guess.
+   */
+  it("says what came of a press, and goes back to a plain button when there is nothing to say", () => {
+    const asking = renderTokenNotice(8761, "asking");
+    expect(asking).toContain(CONNECT_ASKING);
+    // Not pressable while the browser is asking: one press, one question.
+    expect(asking).toContain("disabled");
+
+    const refused = renderTokenNotice(8761, "refused");
+    expect(refused).toContain("The browser did not allow it. Paste the token instead.");
+    expect(refused).toContain('class="said issue"');
+    expect(refused).not.toContain("disabled");
+
+    const failed = renderTokenNotice(8761, "failed");
+    expect(failed).toContain("walkd did not answer through the browser. Paste the token instead.");
+    expect(failed).toContain('class="said issue"');
+
+    expect(connectSay(undefined)).toBeNull();
+    expect(connectSay("asking")).toEqual({ text: CONNECT_ASKING, cls: "" });
+    expect(connectSay("refused")).toEqual({ text: CONNECT_REFUSED, cls: "issue" });
+    expect(connectSay("failed")).toEqual({ text: CONNECT_FAILED, cls: "issue" });
+    // The two failures say what to do next, and neither of them says "secure"
+    // or blames the person.
+    for (const line of [CONNECT_REFUSED, CONNECT_FAILED]) expect(line).toContain("Paste the token instead.");
   });
 
   it("the connection line for a daemon that is answering and refusing says what it wants", () => {

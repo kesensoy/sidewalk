@@ -1,6 +1,7 @@
-import type { GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
+import type { ConnectAnswer, GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
-import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices } from "./render.js";
+import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
+import { NATIVE_PERMISSION } from "./native.js";
 import { versionsDiffer } from "./version.js";
 import { setMarkup } from "./markup.js";
 import { DEFAULT_SCALE, DEFAULT_SHOTS, SCALES, UI_KEY, applyScale, nextScale, shotsOf, type Shots, type Ui } from "./settings.js";
@@ -256,6 +257,48 @@ setInterval(tickDrains, DRAIN_TICK_MS);
  */
 let openedForToken = false;
 
+/**
+ * What the Connect button is in the middle of, or what came of the last press.
+ *
+ * Panel-local, like the drafts and the ticks, and for the same reason: the
+ * notice is rebuilt from scratch on every repaint, and a broadcast lands every
+ * time the worker refreshes. Without this the line a press put up would vanish
+ * under the next one.
+ */
+let connecting: Connecting | undefined;
+
+/**
+ * Connect, pressed.
+ *
+ * The permission request is made by the caller, synchronously inside the click
+ * handler, and its promise is handed here: both browsers refuse
+ * `permissions.request` outside a user action, and Firefox says so in as many
+ * words. Everything after it is ordinary async work.
+ *
+ * The ask itself is the worker's, so that a token the person did not type is
+ * stored by the same code path as one they pasted.
+ */
+async function pressConnect(asking: Promise<boolean>) {
+  connecting = "asking";
+  paint();
+  let granted = false;
+  try { granted = (await asking) === true; } catch { granted = false; }
+  if (!granted) { connecting = "refused"; paint(); return; }
+  const answer = await send<ConnectAnswer | undefined>({ t: "panel:connect" }).catch(() => undefined);
+  if (answer?.ok) {
+    // Nothing to say here: the token is in storage, the worker is already
+    // retargeting on it, and the connection line is what says so.
+    connecting = undefined;
+    paint();
+    return;
+  }
+  // The four likeliest mistakes all report the same sentence to the browser, so
+  // the pane says one line and the reason goes here for whoever is looking.
+  console.warn(`sidewalk: walkd did not answer through the browser (${answer?.reason ?? "no answer from the worker"})`);
+  connecting = "failed";
+  paint();
+}
+
 function paint() {
   const focus = snapshotFocus(document);
   dropStaleTokenSay();
@@ -291,8 +334,13 @@ function paint() {
   const mine = chrome.runtime.getManifest().version;
   // The token notice outranks the version one: until the daemon lets the pane
   // in, nothing it might say about versions can be acted on.
+  // The notice is gone the moment the daemon lets the pane in, and so is
+  // whatever the Connect button was saying: a press that worked has the
+  // connection line to speak for it, and a press that did not has nothing left
+  // to be about.
+  if (!state.needsToken) connecting = undefined;
   setMarkup(document.getElementById("notice")!, state.needsToken
-    ? renderTokenNotice(port)
+    ? renderTokenNotice(port, connecting)
     : state.connected && versionsDiffer(state.daemonVersion, mine) ? renderVersionNotice(mine, state.daemonVersion!, port) : "");
   applyChoices(document, choices);
   syncVerdictButtons(document, drafts, choices);
@@ -380,6 +428,19 @@ async function putOnClipboard(b: HTMLButtonElement, value: string): Promise<bool
 document.addEventListener("click", async e => {
   const b = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
   if (!b) return;
+  // First in the handler, and nothing is awaited before it: a permission
+  // request outside a user action is refused, and one after an `await` has
+  // already left the gesture behind. (The same rule as `firefox.js` §2, which
+  // has the sidebar open for exactly this reason.)
+  if (b.dataset.connect !== undefined) {
+    let asking: Promise<boolean>;
+    // A browser with no `chrome.permissions`, or one that refuses the name
+    // outright, answers here and not from inside the promise.
+    try { asking = Promise.resolve(chrome.permissions.request({ permissions: [NATIVE_PERMISSION] })).then(g => g === true); }
+    catch (err) { console.warn("sidewalk: this browser would not be asked for the permission", err); asking = Promise.resolve(false); }
+    void pressConnect(asking);
+    return;
+  }
   if (b.id === "settings") { const p = document.getElementById("prefs")!; p.hidden = !p.hidden; return; }
   if (b.id === "token-save") { await saveToken(); return; }
   if (b.id === "scale-down") { stepScale(-1); return; }
