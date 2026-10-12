@@ -398,7 +398,8 @@ export async function main(argv = process.argv.slice(2)) {
       if (s.wrapper === null) process.stdout.write("  no wrapper has been written yet; start walkd again to write it\n");
       else {
         process.stdout.write(`  wrapper ${s.wrapper}\n`);
-        process.stdout.write(s.nodeExists ? `  it runs ${s.node}, which is there\n` : `  it runs ${s.node}, which is GONE; start walkd again to point it at this one\n`);
+        if (s.node === null) process.stdout.write("  the wrapper names no node at all; start walkd again to rewrite it\n");
+        else process.stdout.write(s.nodeExists ? `  it runs ${s.node}, which is there\n` : `  it runs ${s.node}, which is GONE; start walkd again to point it at this one\n`);
       }
       for (const f of s.found) process.stdout.write(`  ${f.browser}: ${f.file}\n`);
       for (const a of s.absent) process.stdout.write(`  ${a.browser}: nothing written (no ${a.vendor})\n`);

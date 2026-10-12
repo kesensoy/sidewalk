@@ -231,9 +231,11 @@ describe("the one line a start prints about it", () => {
     expect(line.split("\n").filter(Boolean)).toHaveLength(1);
   });
 
-  it("says plainly when there was no browser folder to write into", () => {
+  it("says the host is there and nothing was registered, when no browser folder exists", () => {
     const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [], registry: [], skipped: [{ browser: "Chrome", vendor: "/v" }], failed: [] });
-    expect(line).toContain("no browser directory");
+    // The host and the wrapper were written; what is missing is a browser.
+    expect(line).toContain("the native messaging host is in /d/native");
+    expect(line).toContain("nothing was registered");
     expect(line.split("\n").filter(Boolean)).toHaveLength(1);
   });
 

@@ -309,7 +309,10 @@ export function nativeLine(r: NativeReport): string {
   if (names.length === 0) {
     const first = r.failed[0];
     if (first) return `walkd: the native messaging host could not be written (${first.where}: ${first.why}). The panel still takes its token from your clipboard, in the gear.\n`;
-    return `walkd: no browser directory to write the native messaging host into, so none was written (${r.dir}).\n`;
+    // The host and its wrapper are written either way; what is missing is a
+    // browser to register them with, and saying "none was written" about the
+    // whole thing would be wrong.
+    return `walkd: the native messaging host is in ${r.dir}; no browser folder on this machine to register it with, so nothing was registered.\n`;
   }
   const trouble = r.failed.length ? ` ${r.failed.length} place${r.failed.length === 1 ? "" : "s"} refused it; "walkd native --status" says which.` : "";
   return `walkd: native messaging host written for ${names.join(", ")} (${r.dir}).${trouble}\n`;
