@@ -725,6 +725,14 @@ describe("walkd serve and the native messaging host", () => {
       expect(lines).toHaveLength(1);
       expect(lines[0]).toContain("native messaging host");
       expect(lines[0]).toContain(path.join(opts.dataDir, "native"));
+      if (process.platform === "win32") {
+        // A browser on Windows reads a registry value, which an overridden root
+        // cannot redirect — so under one the registry half is skipped outright
+        // and the line names no browser at all. That is what keeps `npm test`
+        // on a Windows runner out of the person's own HKCU.
+        for (const b of ["Chrome", "Chromium", "Edge", "Firefox"]) expect(lines[0]).not.toContain(b);
+        expect(lines[0]).toContain("nothing was registered");
+      }
       if (process.platform !== "win32") {
         expect(lines[0]).toContain("Chrome");
         const file = path.join(chromeVendor(home), "NativeMessagingHosts", "sh.sidewalk.walkd.json");
@@ -784,6 +792,29 @@ describe("walkd serve and the native messaging host", () => {
     expect(gone.out).toContain("sh.sidewalk.walkd.json");
     const again = await captured(["native", "--remove", "--data-dir", dataDir, "--state-dir", stateDir], env);
     expect(again.out).toContain("there was no native messaging host to remove");
+    await fs.rm(tmp, { recursive: true, force: true });
+  }, 20000);
+
+  /**
+   * One daemon owns the registration, so `walkd native` writes it for the
+   * machine's own data directory and says so rather than repointing the person's
+   * browsers at a second one. Looking and cleaning up are different: `--status`
+   * and `--remove` take any data directory.
+   */
+  it("walkd native refuses a --data-dir that is not this machine's own, and says why", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-native-other-"));
+    const dataDir = path.join(tmp, "data");
+    // WALKD_NATIVE_ROOT blanked, because an overridden root is exactly the case
+    // this guard steps aside for — and this is the only test that turns the net
+    // off. It is safe because the guard writes nothing at all: no manifest, no
+    // folder, nothing that could reach a real browser.
+    const r = await captured(["native", "--data-dir", dataDir, "--state-dir", path.join(tmp, "state")], { WALKD_TOKEN: "", WALKD_NATIVE_ROOT: "" });
+    expect(r.out).toContain("nothing was written");
+    expect(r.out).toContain(dataDir);
+    expect(r.out).toContain("Leave --data-dir off");
+    expect(r.exit).toBeUndefined();
+    // It wrote nothing at all, not even its own folder.
+    expect(await fs.stat(path.join(dataDir, "native")).then(() => true, () => false)).toBe(false);
     await fs.rm(tmp, { recursive: true, force: true });
   }, 20000);
 

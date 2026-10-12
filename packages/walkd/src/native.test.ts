@@ -4,10 +4,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
-  CHROME_ORIGINS, FIREFOX_EXTENSIONS, HOST_NAME, HOST_SCRIPT, NATIVE_ROOT_ENV, defaultSource,
-  manifest, manifestName, nativeLine, nativeRoots, nativeStatus, registryTargets, removeNativeHost,
-  targets, wrapperName, wrapperPaths, wrapperText, writeNativeHost,
+  CHROME_ORIGINS, FIREFOX_EXTENSIONS, HOST_NAME, HOST_SCRIPT, NATIVE_ROOT_ENV, NOT_OURS, batEscape,
+  defaultSource, manifest, manifestName, nativeLine, nativeRoots, nativeStatus, registersBrowsers,
+  registryTargets, removeNativeHost, shEscape, targets, wrapperName, wrapperPaths, wrapperText,
+  writeNativeHost,
 } from "./native.js";
+import { defaultDataDir } from "./paths.js";
 
 /**
  * Every test here writes under its own temp directory and nothing else. The
@@ -19,6 +21,16 @@ let tmp: string;
 let dataDir: string;
 let stateDir: string;
 const roots = () => nativeRoots({ [NATIVE_ROOT_ENV]: path.join(tmp, "home") });
+/**
+ * Roots with no override, for the Windows cases only.
+ *
+ * On win32 `targets()` is empty — a browser there reads a registry value, not a
+ * folder — so this touches no file under the real home, and `reg` is stubbed in
+ * every case that uses it, so it touches no real key either. It is the only way
+ * to reach the registry path at all: under an overridden root that path is
+ * skipped by design, which is the whole point of H1.
+ */
+const realRoots = () => nativeRoots({});
 const read = async (f: string) => JSON.parse(await fs.readFile(f, "utf8"));
 const exists = (f: string) => fs.stat(f).then(() => true, () => false);
 
@@ -72,9 +84,45 @@ describe("where the manifests go", () => {
 
   it("honours XDG_CONFIG_HOME, and lets the override win over it", () => {
     expect(nativeRoots({ XDG_CONFIG_HOME: "/xdg" }).config).toBe("/xdg");
-    expect(nativeRoots({ XDG_CONFIG_HOME: "/xdg", [NATIVE_ROOT_ENV]: "/h" })).toEqual({ home: "/h", config: path.join("/h", ".config") });
+    expect(nativeRoots({ XDG_CONFIG_HOME: "/xdg", [NATIVE_ROOT_ENV]: "/h" })).toEqual({ home: "/h", config: path.join("/h", ".config"), overridden: true });
     // A blank variable is not a value.
     expect(nativeRoots({ [NATIVE_ROOT_ENV]: "  " }).home).toBe(os.homedir());
+    expect(nativeRoots({ [NATIVE_ROOT_ENV]: "  " }).overridden).toBe(false);
+  });
+});
+
+/**
+ * One daemon owns the browser registration, because the manifests name one
+ * wrapper and that wrapper names one state directory. A second daemon — an
+ * experiment, a recording, a test — writes its host and registers nothing, so
+ * it can never take the panel away from the daemon the person actually uses.
+ */
+describe("which daemon may register with the browsers", () => {
+  it("is the one on this machine's own data directory", () => {
+    expect(registersBrowsers(defaultDataDir(), nativeRoots({}))).toBe(true);
+    expect(registersBrowsers(path.join(tmp, "somewhere-else"), nativeRoots({}))).toBe(false);
+  });
+
+  it("is any daemon at all once the root is overridden, because then the browsers are a temp directory", () => {
+    expect(registersBrowsers(path.join(tmp, "somewhere-else"), roots())).toBe(true);
+  });
+
+  it("writes the host but registers nothing for a data directory that is not the default", async () => {
+    const r = realRoots();
+    const report = await writeNativeHost({ dataDir, stateDir, platform: "darwin", roots: r, node: "/n/node" });
+    expect(report.registers).toBe(false);
+    expect(report.wrote).toEqual([]);
+    expect(report.registry).toEqual([]);
+    expect(report.failed).toEqual([]);
+    // The host and the wrapper are there either way, so --status has something
+    // to say and the files cost nothing.
+    expect(await exists(report.hostJs)).toBe(true);
+    expect(await exists(report.wrapper)).toBe(true);
+    // Every browser is accounted for, with the reason in plain words.
+    expect(report.skipped.map(s => s.browser)).toEqual(targets("darwin", r).map(t => t.browser));
+    expect(report.skipped.every(s => s.vendor === NOT_OURS)).toBe(true);
+    expect(nativeLine(report)).toContain(NOT_OURS);
+    expect(nativeLine(report).split("\n").filter(Boolean)).toHaveLength(1);
   });
 });
 
@@ -116,6 +164,29 @@ describe("the wrapper the browser runs", () => {
     const sh = wrapperText("linux", "/n/bin/node", "/d/native/host.js", "/d/state");
     expect(wrapperPaths(sh)).toEqual({ node: "/n/bin/node", hostJs: "/d/native/host.js" });
     expect(wrapperPaths("nothing quoted here")).toEqual({ node: null, hostJs: null });
+  });
+
+  /**
+   * A home directory with a `$` or a space in it is ordinary and legal, and a
+   * path that closed the quote would leave the browser running something else
+   * entirely. Nothing here is reachable from anywhere but the person's own
+   * filesystem layout — it is correctness, not a boundary.
+   */
+  it("escapes what a shell would still read inside the quotes", () => {
+    expect(shEscape(`a"b`)).toBe(`a\\"b`);
+    expect(shEscape("a$b")).toBe("a\\$b");
+    expect(shEscape("a`b")).toBe("a\\`b");
+    expect(shEscape("a\\b")).toBe("a\\\\b");
+    expect(shEscape("/plain/path with spaces")).toBe("/plain/path with spaces");
+    const sh = wrapperText("darwin", "/n/node", `/Users/a$b/d/native/host.js`, `/Users/a"b/state`);
+    expect(sh).toContain(`"/Users/a\\$b/d/native/host.js"`);
+    expect(sh).toContain(`"/Users/a\\"b/state"`);
+  });
+
+  it("doubles a percent sign in the batch file, which is the only thing cmd still reads", () => {
+    expect(batEscape("a%b")).toBe("a%%b");
+    expect(batEscape("C:\\Users\\a\\node.exe")).toBe("C:\\Users\\a\\node.exe");
+    expect(wrapperText("win32", "C:\\n\\node.exe", "C:\\d%1\\host.js", "C:\\s")).toContain(`"C:\\d%%1\\host.js"`);
   });
 });
 
@@ -185,10 +256,10 @@ describe("writing it", () => {
   });
 
   it("writes the two JSON files into its own folder on Windows, and one HKCU value each", async () => {
-    const r = roots();
+    const r = realRoots();
     const calls: string[][] = [];
     const report = await writeNativeHost({
-      dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe",
+      dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", registers: true,
       reg: async args => { calls.push(args); },
     });
     expect(report.registry.map(w => w.browser)).toEqual(["Chrome", "Chromium", "Edge", "Firefox"]);
@@ -207,32 +278,65 @@ describe("writing it", () => {
 
   it("keeps a reg failure to that one key", async () => {
     const report = await writeNativeHost({
-      dataDir, stateDir, platform: "win32", roots: roots(), node: "C:\\n\\node.exe",
+      dataDir, stateDir, platform: "win32", roots: realRoots(), node: "C:\\n\\node.exe", registers: true,
       reg: async args => { if (args[1].includes("Mozilla")) throw new Error("access is denied"); },
     });
     expect(report.registry.map(w => w.browser)).toEqual(["Chrome", "Chromium", "Edge"]);
     expect(report.failed).toHaveLength(1);
     expect(report.failed[0].where).toContain("Mozilla");
   });
+
+  /**
+   * The one thing an overridden root cannot redirect. A registry key is the
+   * person's own HKCU whatever `WALKD_NATIVE_ROOT` says, so under an override
+   * the registry half is not attempted at all — which is what keeps `npm test`
+   * on a Windows runner from writing four real keys pointing at a temp
+   * directory the run then deletes.
+   */
+  it("makes no reg call at all under an overridden root, and says which keys it left alone", async () => {
+    const calls: string[][] = [];
+    const report = await writeNativeHost({
+      dataDir, stateDir, platform: "win32", roots: roots(), node: "C:\\n\\node.exe",
+      reg: async args => { calls.push(args); },
+    });
+    expect(calls).toEqual([]);
+    expect(report.registry).toEqual([]);
+    expect(report.skipped.map(s => s.browser)).toEqual(["Chrome", "Chromium", "Edge", "Firefox"]);
+    for (const s of report.skipped) {
+      expect(s.vendor).toContain("HKCU\\");
+      expect(s.vendor).toContain(NATIVE_ROOT_ENV);
+    }
+    // The host itself is still written, under the temp data dir where it belongs.
+    expect(await exists(report.hostJs)).toBe(true);
+    expect(await exists(path.join(report.dir, "host.bat"))).toBe(true);
+    // And the line a start prints names no browser, because none was registered,
+    // and says which of the two reasons it was.
+    const line = nativeLine(report);
+    for (const b of ["Chrome", "Chromium", "Edge", "Firefox"]) expect(line).not.toContain(b);
+    expect(report.heldRegistry).toBe(true);
+    expect(line).toContain("nothing was registered");
+    expect(line).toContain(NATIVE_ROOT_ENV);
+    expect(line.split("\n").filter(Boolean)).toHaveLength(1);
+  });
 });
 
 describe("the one line a start prints about it", () => {
   it("names the browsers it wrote for and where the host is", () => {
-    const line = nativeLine({ dir: "/d/native", hostJs: "/d/native/host.js", wrapper: "/d/native/host", node: "/n", wrote: [{ browser: "Chrome", file: "/a" }, { browser: "Firefox", file: "/b" }], registry: [], skipped: [], failed: [] });
+    const line = nativeLine({ dir: "/d/native", hostJs: "/d/native/host.js", wrapper: "/d/native/host", node: "/n", wrote: [{ browser: "Chrome", file: "/a" }, { browser: "Firefox", file: "/b" }], registry: [], skipped: [], failed: [], registers: true });
     expect(line).toBe("walkd: native messaging host written for Chrome, Firefox (/d/native).\n");
     expect(line.endsWith("\n")).toBe(true);
     expect(line.split("\n").filter(Boolean)).toHaveLength(1);
   });
 
   it("says what refused it, and points at --status, without burying the good news", () => {
-    const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [{ browser: "Chrome", file: "/a" }], registry: [], skipped: [], failed: [{ where: "/x", why: "EACCES" }] });
+    const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [{ browser: "Chrome", file: "/a" }], registry: [], skipped: [], failed: [{ where: "/x", why: "EACCES" }], registers: true });
     expect(line).toContain("written for Chrome");
     expect(line).toContain("1 place refused it");
     expect(line.split("\n").filter(Boolean)).toHaveLength(1);
   });
 
   it("says the host is there and nothing was registered, when no browser folder exists", () => {
-    const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [], registry: [], skipped: [{ browser: "Chrome", vendor: "/v" }], failed: [] });
+    const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [], registry: [], skipped: [{ browser: "Chrome", vendor: "/v" }], failed: [], registers: true });
     // The host and the wrapper were written; what is missing is a browser.
     expect(line).toContain("the native messaging host is in /d/native");
     expect(line).toContain("nothing was registered");
@@ -240,7 +344,7 @@ describe("the one line a start prints about it", () => {
   });
 
   it("names the first failure, and the clipboard, when nothing was written at all", () => {
-    const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [], registry: [], skipped: [], failed: [{ where: "/d/native", why: "EROFS" }] });
+    const line = nativeLine({ dir: "/d/native", hostJs: "", wrapper: "", node: "", wrote: [], registry: [], skipped: [], failed: [{ where: "/d/native", why: "EROFS" }], registers: true });
     expect(line).toContain("EROFS");
     expect(line).toContain("clipboard");
     expect(line.split("\n").filter(Boolean)).toHaveLength(1);
@@ -276,14 +380,27 @@ describe("walkd native --status", () => {
     expect(s.found).toEqual([]);
   });
 
-  it("reads the registry through the same seam on Windows", async () => {
+  it("reads the registry through the same seam on Windows, and says set or not set", async () => {
     const s = await nativeStatus({
-      dataDir, stateDir, platform: "win32", roots: roots(),
+      dataDir, stateDir, platform: "win32", roots: realRoots(), registers: true,
       reg: async args => { if (args[1].includes("Chromium")) throw new Error("not found"); },
     });
     expect(s.registry.map(k => k.browser)).toEqual(["Chrome", "Chromium", "Edge", "Firefox"]);
-    expect(s.registry.find(k => k.browser === "Chromium")!.value).toBeNull();
-    expect(s.registry.find(k => k.browser === "Chrome")!.value).toContain(`${HOST_NAME}.json`);
+    // `reg query /ve`'s output is not parsed, so the answer is whether the key
+    // is there — never a manifest path this never read.
+    expect(s.registry.find(k => k.browser === "Chromium")!.state).toBe("not set");
+    expect(s.registry.find(k => k.browser === "Chrome")!.state).toBe("set");
+    for (const k of s.registry) expect(k.key).toContain("HKCU\\");
+  });
+
+  it("does not read the registry at all under an overridden root", async () => {
+    const calls: string[][] = [];
+    const s = await nativeStatus({
+      dataDir, stateDir, platform: "win32", roots: roots(),
+      reg: async args => { calls.push(args); },
+    });
+    expect(calls).toEqual([]);
+    expect(s.registry.map(k => k.state)).toEqual(["not read", "not read", "not read", "not read"]);
   });
 });
 
@@ -321,13 +438,27 @@ describe("walkd native --remove", () => {
   });
 
   it("deletes the registry values on Windows", async () => {
-    const r = roots();
-    await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", reg: async () => {} });
+    const r = realRoots();
+    await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", registers: true, reg: async () => {} });
     const calls: string[][] = [];
-    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, reg: async args => { calls.push(args); } });
+    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, registers: true, reg: async args => { calls.push(args); } });
     expect(calls.map(c => c[0])).toEqual(["delete", "delete", "delete", "delete"]);
     expect(calls.every(c => c[2] === "/f")).toBe(true);
     expect(gone.removed).toContain(registryTargets()[0].key);
+  });
+
+  it("deletes no registry value under an overridden root, but still takes its own files out", async () => {
+    const r = roots();
+    const report = await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", reg: async () => {} });
+    const calls: string[][] = [];
+    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, reg: async args => { calls.push(args); } });
+    // A run that was never allowed to write a key must not delete one either.
+    expect(calls).toEqual([]);
+    expect(gone.removed.some(f => f.startsWith("HKCU\\"))).toBe(false);
+    // Its own files under the temp data dir are still cleaned up.
+    expect(gone.removed).toContain(report.hostJs);
+    expect(gone.removed).toContain(report.wrapper);
+    expect(await exists(report.dir)).toBe(false);
   });
 });
 
@@ -390,7 +521,14 @@ describe("the host program", () => {
     await fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({ pid: 1, dataDir }));
     await fs.writeFile(path.join(dataDir, "token"), "the-token\n");
     expect((await ask(["--state-dir", stateDir]))!.body.reason).toContain("incomplete");
-  }, 20000);
+    // And one with no data directory is not guessed at from the state
+    // directory's own path: on Linux the two are siblings, not parent and
+    // child, so a guess would be wrong exactly where it mattered.
+    await fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({ port: 8770, pid: 1 }));
+    expect((await ask(["--state-dir", stateDir]))!.body).toEqual({ ok: false, reason: "walkd's state file names no data directory" });
+    // Unless it is told one.
+    expect((await ask(["--state-dir", stateDir, "--data-dir", dataDir]))!.body).toEqual({ ok: true, port: 8770, token: "the-token" });
+  }, 25000);
 
   it("answers a frame that arrives in pieces, and refuses one that claims to be huge", async () => {
     await writeState(8768);

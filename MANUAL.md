@@ -146,8 +146,14 @@ without the paste.
 **Nothing reads it yet.** The panel's half ships in a later release through both
 stores, and the manifests have to be on disk before any panel can ask — so they
 go in now. Until then the clipboard and the gear are the whole of it, and they
-stay the fallback afterwards for a browser the host cannot reach (a Snap
-Chromium, a Flatpak browser, a managed machine).
+stay the fallback afterwards for a browser the host cannot reach, such as a Snap
+Chromium or a browser under an enterprise policy.
+
+**Only the daemon on this machine's own data directory registers with your
+browsers**, because the manifests name one wrapper and that wrapper names one
+state directory: a `walkd serve --data-dir /tmp/somewhere` writes its host and
+registers nothing, so an experiment or a recording can never repoint the
+browsers at a daemon you are not using.
 
 What a start writes: `<data dir>/native/host.js` (copied out of walkd's own
 package, so an npx cache sweep cannot take it away), a wrapper beside it at mode
@@ -172,9 +178,12 @@ node packages/walkd/bin/walkd.js native --remove   # take out everything it wrot
 ```
 
 `WALKD_NATIVE_ROOT` replaces the home directory every one of those paths hangs
-off. It is a test seam, not a setting: the e2e, the demo recorder, the
-screenshot run and the Firefox check all set it, because none of them has any
-business editing the browser profiles of whoever is running them.
+off, and it is what lets a daemon on another data directory register after all —
+inside that root. It is a test seam, not a setting: the e2e, the demo recorder,
+the screenshot run and the Firefox check all set it, because none of them has any
+business editing the browser profiles of whoever is running them. On Windows it
+cannot redirect anything, since a browser there reads a registry value rather
+than a folder, so with it set the registry half is skipped outright.
 
 A pane with no token, or an old one, says *walkd on 8760 needs the token* on its
 connection line and offers `npx -y sidewalk-walkd token --copy` above the cards, with the

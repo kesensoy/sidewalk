@@ -4,6 +4,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DIR_MODE } from "./store.js";
+import { defaultDataDir } from "./paths.js";
 
 /**
  * The native messaging host: how a browser panel will be able to ask walkd for
@@ -85,15 +86,38 @@ export type Target = { browser: string; family: Family; vendor: string; dir: str
  * temp dir, and the only run that writes into a real profile is a `walkd serve`
  * with the variable unset. It also overrides `XDG_CONFIG_HOME`, so a test
  * cannot be dragged out of its own root by the environment it inherited.
+ *
+ * `overridden` says the variable was set, and it is load-bearing rather than
+ * informational: Windows has no file location to redirect — a browser there
+ * reads a registry value — so the only way an overridden root can keep a test
+ * out of the person's own machine is for the registry half to be skipped
+ * outright. Every `reg` call is behind it.
  */
-export type Roots = { home: string; config: string };
+export type Roots = { home: string; config: string; overridden: boolean };
 export const NATIVE_ROOT_ENV = "WALKD_NATIVE_ROOT";
 
 export function nativeRoots(env: NodeJS.ProcessEnv = process.env): Roots {
   const override = env[NATIVE_ROOT_ENV]?.trim();
-  if (override) return { home: override, config: path.join(override, ".config") };
+  if (override) return { home: override, config: path.join(override, ".config"), overridden: true };
   const home = os.homedir();
-  return { home, config: env.XDG_CONFIG_HOME?.trim() || path.join(home, ".config") };
+  return { home, config: env.XDG_CONFIG_HOME?.trim() || path.join(home, ".config"), overridden: false };
+}
+
+/**
+ * May this daemon register itself with the person's browsers?
+ *
+ * Only one daemon on a machine can own that registration — the manifests name
+ * one wrapper, and the wrapper names one state directory — so it belongs to the
+ * daemon on the machine's own data directory. A daemon somebody started on
+ * `--data-dir /tmp/something` is a second daemon, an experiment or a recording,
+ * and repointing the person's real browsers at it would take the panel away
+ * from the daemon they actually use.
+ *
+ * An overridden root says yes regardless, because then "the person's browsers"
+ * are a temp directory: that is the e2e, and release 2's throwaway profile.
+ */
+export function registersBrowsers(dataDir: string, roots: Roots): boolean {
+  return roots.overridden || path.resolve(dataDir) === path.resolve(defaultDataDir());
 }
 
 /**
@@ -192,11 +216,34 @@ export function manifest(family: Family, wrapper: string): Record<string, unknow
  * host the browser cannot launch.
  */
 export function wrapperText(platform: NodeJS.Platform, node: string, hostJs: string, stateDir: string): string {
-  if (platform === "win32") return `@echo off\r\n"${node}" "${hostJs}" --state-dir "${stateDir}"\r\n`;
-  return `#!/bin/sh\nexec "${node}" "${hostJs}" --state-dir "${stateDir}"\n`;
+  if (platform === "win32") {
+    const b = (s: string) => batEscape(s);
+    return `@echo off\r\n"${b(node)}" "${b(hostJs)}" --state-dir "${b(stateDir)}"\r\n`;
+  }
+  const q = (s: string) => shEscape(s);
+  return `#!/bin/sh\nexec "${q(node)}" "${q(hostJs)}" --state-dir "${q(stateDir)}"\n`;
 }
 
+/**
+ * The four characters a shell still reads inside double quotes. A home directory
+ * with a `$` in it is unusual and entirely legal, and a path that closed the
+ * quote would leave the browser running something else.
+ */
+export const shEscape = (s: string): string => s.replace(/(["$`\\])/g, "\\$1");
+
+/**
+ * `%` is what `cmd` still reads inside a quoted argument in a batch file, and
+ * `%%` is how a batch file writes a literal one. A double quote cannot appear in
+ * a Windows path at all, so there is nothing else to do here.
+ */
+export const batEscape = (s: string): string => s.replace(/%/g, "%%");
+
 export type Wrote = { browser: string; file: string };
+/**
+ * A browser that was not registered with, and the plain reason: the folder that
+ * was not there, the registry key that was left alone, or the sentence saying
+ * this daemon does not own the registration at all.
+ */
 export type Skipped = { browser: string; vendor: string };
 export type Failure = { where: string; why: string };
 export type NativeReport = {
@@ -208,13 +255,24 @@ export type NativeReport = {
   registry: Wrote[];
   skipped: Skipped[];
   failed: Failure[];
+  /** False when this daemon does not own the browser registration — see `registersBrowsers`. */
+  registers: boolean;
+  /**
+   * True when the Windows registry half was left alone because the root is
+   * overridden. It is the one place an override cannot redirect anything, so it
+   * is the one place the honest line is "nothing was touched" rather than
+   * "nothing was there".
+   */
+  heldRegistry?: boolean;
 };
 
 /** `reg add` / `reg delete`, the way the clipboard goes through `clip`. */
 export type Reg = (args: string[]) => Promise<void>;
 
+// `timeout`: a `reg` that hangs would hang a `walkd serve` start, and this runs
+// four times. The failure is recorded like any other and the start carries on.
 const runReg: Reg = args => new Promise((resolve, reject) => {
-  execFile("reg", args, { windowsHide: true }, e => (e ? reject(e) : resolve()));
+  execFile("reg", args, { windowsHide: true, timeout: 5000 }, e => (e ? reject(e) : resolve()));
 });
 
 export type NativeOptions = {
@@ -227,6 +285,13 @@ export type NativeOptions = {
   /** Where the shipped `host.js` is read from. */
   source?: string;
   reg?: Reg;
+  /**
+   * Overrides `registersBrowsers`. The seam the Windows tests need: the registry
+   * half is unreachable under an overridden root by design, so the only way to
+   * exercise it is to say so here and hand `reg` a stub. Nothing in the product
+   * passes it.
+   */
+  registers?: boolean;
 };
 
 /**
@@ -254,7 +319,8 @@ export async function writeNativeHost(opts: NativeOptions): Promise<NativeReport
   const dir = path.join(opts.dataDir, NATIVE_DIR);
   const hostJs = path.join(dir, HOST_SCRIPT);
   const wrapper = path.join(dir, wrapperName(platform));
-  const report: NativeReport = { dir, hostJs, wrapper, node, wrote: [], registry: [], skipped: [], failed: [] };
+  const registers = opts.registers ?? registersBrowsers(opts.dataDir, roots);
+  const report: NativeReport = { dir, hostJs, wrapper, node, wrote: [], registry: [], skipped: [], failed: [], registers };
 
   try {
     await fs.mkdir(dir, { recursive: true, mode: DIR_MODE });
@@ -268,6 +334,15 @@ export async function writeNativeHost(opts: NativeOptions): Promise<NativeReport
     if (platform !== "win32") await fs.chmod(wrapper, WRAPPER_MODE);
   } catch (e) {
     report.failed.push({ where: dir, why: why(e) });
+    return report;
+  }
+
+  // The host and the wrapper are written for every daemon, because `--status`
+  // should have something to say and the files cost nothing. The registration is
+  // what one daemon owns, and a daemon that does not own it stops here.
+  if (!registers) {
+    for (const t of [...targets(platform, roots), ...(platform === "win32" ? registryTargets().map(r => ({ browser: r.browser, vendor: r.key })) : [])])
+      report.skipped.push({ browser: t.browser, vendor: NOT_OURS });
     return report;
   }
 
@@ -286,6 +361,16 @@ export async function writeNativeHost(opts: NativeOptions): Promise<NativeReport
   }
 
   if (platform === "win32") {
+    // The one place an overridden root cannot redirect anything. A registry key
+    // is the person's own HKCU whatever `WALKD_NATIVE_ROOT` says, so under an
+    // override the registry half is not attempted at all — which is what keeps
+    // `npm test` on a Windows runner from writing four real keys that point at
+    // a temp directory the run then deletes.
+    if (roots.overridden) {
+      for (const t of registryTargets()) report.skipped.push({ browser: t.browser, vendor: `${t.key} (${NATIVE_ROOT_ENV} is set)` });
+      report.heldRegistry = true;
+      return report;
+    }
     const reg = opts.reg ?? runReg;
     for (const t of registryTargets()) {
       const file = path.join(dir, manifestName(t.family, platform));
@@ -299,6 +384,9 @@ export async function writeNativeHost(opts: NativeOptions): Promise<NativeReport
   return report;
 }
 
+/** Why nothing was registered, when the reason is which daemon this is. */
+export const NOT_OURS = "another data directory owns the browser registration";
+
 /**
  * The one line `walkd serve` prints about all of it — one on success, one when
  * there was nothing to write or nothing worked. A daemon start is not the place
@@ -309,6 +397,13 @@ export function nativeLine(r: NativeReport): string {
   if (names.length === 0) {
     const first = r.failed[0];
     if (first) return `walkd: the native messaging host could not be written (${first.where}: ${first.why}). The panel still takes its token from your clipboard, in the gear.\n`;
+    // Not a failure: this daemon is on its own data directory, and repointing
+    // the person's browsers at it would take the panel away from the daemon
+    // they actually use.
+    if (!r.registers) return `walkd: the native messaging host is in ${r.dir}, and no browser was registered with it: ${NOT_OURS}.\n`;
+    // Windows under an overridden root: the keys were not read and not written,
+    // which is a different sentence from "there was nothing there".
+    if (r.heldRegistry) return `walkd: the native messaging host is in ${r.dir}, and nothing was registered: ${NATIVE_ROOT_ENV} is set, and a registry key is not something it can redirect.\n`;
     // The host and its wrapper are written either way; what is missing is a
     // browser to register them with, and saying "none was written" about the
     // whole thing would be wrong.
@@ -326,7 +421,13 @@ export type NativeStatus = {
   hostJs: boolean;
   found: Wrote[];
   absent: Skipped[];
-  registry: { browser: string; key: string; value: string | null }[];
+  /**
+   * `state` rather than a path: `reg query /ve` is asked whether the key is
+   * there, and the answer is not parsed, so printing a manifest path here would
+   * be printing one this never read. "not read" is the overridden-root case,
+   * where the registry is deliberately left alone.
+   */
+  registry: { browser: string; key: string; state: "set" | "not set" | "not read" }[];
 };
 
 /** The absolute paths a wrapper names, read back out of the file it is. */
@@ -360,13 +461,18 @@ export async function nativeStatus(opts: NativeOptions): Promise<NativeStatus> {
     else out.absent.push({ browser: t.browser, vendor: t.vendor });
   }
   if (platform === "win32") {
+    // Under an overridden root the registry is not ours to read either: a run
+    // that must not write HKCU has no business reporting on it.
+    if (roots.overridden && opts.registers !== true) {
+      for (const t of registryTargets()) out.registry.push({ browser: t.browser, key: t.key, state: "not read" });
+      return out;
+    }
     const reg = opts.reg ?? runReg;
     for (const t of registryTargets()) {
       // `reg query` through the same seam: a key that is not there throws, which
       // is the answer rather than an error.
       const there = await reg(["query", t.key, "/ve"]).then(() => true, () => false);
-      const file = path.join(dir, manifestName(t.family, platform));
-      out.registry.push({ browser: t.browser, key: t.key, value: there ? file : null });
+      out.registry.push({ browser: t.browser, key: t.key, state: there ? "set" : "not set" });
     }
   }
   return out;
@@ -394,11 +500,17 @@ export async function removeNativeHost(opts: NativeOptions): Promise<NativeRemov
   };
   for (const t of targets(platform, roots)) await drop(path.join(t.dir, manifestName(t.family, platform)));
   if (platform === "win32") {
-    const reg = opts.reg ?? runReg;
-    for (const t of registryTargets()) {
-      await drop(path.join(dir, manifestName(t.family, platform)));
-      try { await reg(["delete", t.key, "/f"]); out.removed.push(t.key); }
-      catch { /* a key that was never there is nothing to report */ }
+    // The JSON files are under this data directory, so they go either way. The
+    // registry keys are the person's own HKCU whatever the root says, so under
+    // an overridden root they are left exactly as they are — a run that was
+    // never allowed to write them must not delete them either.
+    for (const t of registryTargets()) await drop(path.join(dir, manifestName(t.family, platform)));
+    if (!roots.overridden || opts.registers === true) {
+      const reg = opts.reg ?? runReg;
+      for (const t of registryTargets()) {
+        try { await reg(["delete", t.key, "/f"]); out.removed.push(t.key); }
+        catch { /* a key that was never there is nothing to report */ }
+      }
     }
   }
   for (const f of [wrapperName(platform), HOST_SCRIPT, HOST_PACKAGE]) await drop(path.join(dir, f));

@@ -9,7 +9,7 @@ import { createHttpServer, VERSION } from "./http.js";
 import { defaultDataDir, defaultStateDir } from "./paths.js";
 import { ensureToken, inspectToken, newToken, readToken, TOKEN_ENV, tokenFromEnv, tokenPath, writeToken } from "./token.js";
 import { armClipboardClear, clearIfUnchanged, CLEAR_AFTER_MS, copyToClipboard, type ClipboardCommand } from "./clipboard.js";
-import { nativeLine, nativeRoots, nativeStatus, removeNativeHost, writeNativeHost, HOST_NAME, NATIVE_ROOT_ENV } from "./native.js";
+import { nativeLine, nativeRoots, nativeStatus, registersBrowsers, removeNativeHost, writeNativeHost, HOST_NAME, NATIVE_ROOT_ENV } from "./native.js";
 import { spawn } from "node:child_process";
 
 export type State = { port: number; pid: number; dataDir: string; startedAt: string };
@@ -273,7 +273,9 @@ export async function main(argv = process.argv.slice(2)) {
     // process.execArgv so a parent started with --import tsx (the tests) hands
     // the child the same loader; detached + unref so this process can exit and
     // leave it running.
-    const child = spawn(process.execPath, [...process.execArgv, entry, ...args], { detached: true, stdio: ["ignore", log.fd, log.fd] });
+    // `windowsHide`: the daemon is a detached child whose output goes to a log
+    // file, so a console window for it is nothing but a window in the way.
+    const child = spawn(process.execPath, [...process.execArgv, entry, ...args], { detached: true, stdio: ["ignore", log.fd, log.fd], windowsHide: true });
     child.unref();
     let live: State | null = null;
     for (let i = 0; i < 100 && !live; i++) {
@@ -403,11 +405,22 @@ export async function main(argv = process.argv.slice(2)) {
       }
       for (const f of s.found) process.stdout.write(`  ${f.browser}: ${f.file}\n`);
       for (const a of s.absent) process.stdout.write(`  ${a.browser}: nothing written (no ${a.vendor})\n`);
-      for (const k of s.registry) process.stdout.write(`  ${k.browser}: ${k.key} ${k.value === null ? "is not set" : `= ${k.value}`}\n`);
+      for (const k of s.registry) process.stdout.write(`  ${k.browser}: ${k.key} ${k.state}\n`);
       return;
     }
     // Plain `walkd native` writes it, for a person whose daemon was already
     // running when this release arrived and who would rather not restart it.
+    //
+    // Only for the machine's own data directory, though. The manifests name one
+    // wrapper and the wrapper names one state directory, so the registration
+    // belongs to the daemon the person actually uses, and a `--data-dir` here is
+    // somebody asking to point their browsers at a second one. It says so
+    // rather than doing it. `--status` and `--remove` still take any data dir:
+    // looking and cleaning up are not the same as repointing.
+    if (!registersBrowsers(dataDir, nativeRoots())) {
+      process.stdout.write(`walkd: nothing was written. ${dataDir} is not this machine's own data directory, and only the daemon on that one registers the native messaging host with your browsers. Leave --data-dir off to write it.\n`);
+      return;
+    }
     const report = await writeNativeHost({ dataDir, stateDir });
     process.stdout.write(nativeLine(report));
     for (const f of report.failed) process.stderr.write(`walkd: ${f.where} refused it (${f.why})\n`);
