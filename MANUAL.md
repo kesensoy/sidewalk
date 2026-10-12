@@ -853,14 +853,18 @@ registering its content scripts for the port it named and a page on another
 loopback port getting none; and the hands-free token — a fresh profile with
 nothing in storage asking walkd's native messaging host and being let in with
 nothing pasted, and the same profile with no host manifest on disk saying so and
-offering Connect with the command under it.
+offering Connect with the command under it — and then pressing Connect twice,
+once with nothing there to answer, which says so in one line, and once after the
+manifest lands mid-session, which connects it.
 
 The last two run a browser of their own, because what they are about is a
 profile that has never been given anything. Two things they do that nothing else
 in the suite does: they load a copy of `dist` whose manifest asks for
 `nativeMessaging` outright (Chrome's permission bubble cannot be clicked by any
 automation — not Playwright, not CDP, not `chrome://extensions`, and the
-preferences file's MAC rejects a hand-edited grant), and they copy the host
+preferences file's MAC rejects a hand-edited grant; a required permission also
+makes the button pressable in a test, since a request for one already held
+returns at once and draws nothing), and they copy the host
 manifest walkd's own writer produced into `<user-data-dir>/NativeMessagingHosts`,
 beside `Default/`, which is the only place a Chromium launched with
 `--user-data-dir` looks. The copy also rewrites the default port to 8761, so a

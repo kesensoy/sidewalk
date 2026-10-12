@@ -1471,7 +1471,7 @@ async function freshPane(withHost: boolean) {
     await fs.rm(udd, { recursive: true, force: true });
     await fs.rm(build, { recursive: true, force: true });
   };
-  return { fresh, sw, id, panel, log, manifest, close };
+  return { fresh, sw, id, panel, log, manifest, udd, close };
 }
 
 test("a fresh profile with no token asks walkd's host for it and is let in with nothing pasted", async () => {
@@ -1504,7 +1504,23 @@ test("a fresh profile with no token asks walkd's host for it and is let in with 
   }
 });
 
-test("with no host manifest on disk the same profile says so and offers Connect, with the command under it", async () => {
+/**
+ * The same profile with no host on disk, and then the Connect button pressed
+ * twice — once with nothing there to answer, and once after the manifest lands.
+ *
+ * Pressing it is testable here for one reason: in this build the permission is
+ * required, and `permissions.request` on a permission already held returns
+ * `granted: true` at once with no bubble drawn (measured). So the click path is
+ * exercised in full — the request inside the handler, the message to the
+ * worker, the ask, and the line the pane says about how it went — and only the
+ * drawing of Chrome's bubble is left out, which is the one part no automation
+ * can reach.
+ *
+ * Writing the manifest between the two presses is the per-call lookup, used as
+ * a feature: nothing is restarted, and the second press finds a host the first
+ * one could not.
+ */
+test("with no host on disk the pane says so, and Connect says what came of it — then the manifest lands and it connects", async () => {
   const pane = await freshPane(false);
   try {
     await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
@@ -1521,6 +1537,23 @@ test("with no host manifest on disk the same profile says so and offers Connect,
     expect(pane.log.join("\n")).toContain("no token through the browser (noHost");
     expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBeUndefined();
     console.log(`hands-free proof: with no manifest the pane says "walkd on ${PORT} needs the token", offers Connect, and keeps the command`);
+
+    // Pressed with nothing to answer: one line, and the command still under it.
+    await pane.panel.locator(".note.token button[data-connect]").click();
+    await expect(pane.panel.locator(".note.token .said")).toHaveText("walkd did not answer through the browser. Paste the token instead.", { timeout: 15_000 });
+    await expect(pane.panel.locator(".note.token code")).toHaveText("npx -y sidewalk-walkd token --copy");
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`);
+    console.log(`hands-free proof: Connect pressed with no host — "walkd did not answer through the browser. Paste the token instead."`);
+
+    // The manifest lands now, with the browser already running and nothing
+    // restarted, because the lookup happens on every call.
+    const manifest = await hostManifestInto(pane.udd);
+    expect(manifest.allowed_origins).toEqual([`chrome-extension://${pane.id}/`]);
+    await pane.panel.locator(".note.token button[data-connect]").click();
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.token")).toHaveCount(0);
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBe(token);
+    console.log(`hands-free proof: Connect pressed again with the manifest in the profile — connected to walkd on ${PORT}, token identical, nothing restarted`);
   } finally {
     await pane.close();
   }
