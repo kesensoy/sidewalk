@@ -10,6 +10,7 @@ Start with `MANUAL.md` — it is the operator manual and is kept current.
 | What shipped when | `CHANGELOG.md` |
 | The item / verdict / walk contract (zod, source of truth; JSON Schema via `toJsonSchema()`) | `packages/walkd/src/schema/index.ts`, published as `sidewalk-walkd/schema` |
 | Daemon: streams on disk, HTTP+SSE, CLI | `packages/walkd/src/{store,http,cli}.ts` |
+| The token, the clipboard, the native messaging host | `packages/walkd/src/{token,clipboard,native}.ts` + `packages/walkd/native/host.js`, and `MANUAL.md` §2 |
 | Agent face: the six MCP tools | `packages/sidewalk-mcp/src/server.ts` |
 | Extension: worker / content / page-world / panel | `packages/extension/src/{sw,content,main,panel}.ts` |
 | The marketing demo: Lamppost, a walk of every feature, and the launcher that plays the agent | `demo/README.md` |
@@ -38,6 +39,13 @@ product that used it.
   `chrome.storage.local`'s `walkd:port`; Playwright debugging is 9341.
   **Never 9222** — leave 9222 to the person's own tools.
   Unit tests bind port 0.
+- **`WALKD_NATIVE_ROOT` on anything that starts a real daemon.** A `walkd serve`
+  writes native messaging manifests into the browser profiles under `$HOME`, so
+  a test or a recording without that variable edits the person's own Chrome.
+  The e2e, the demo recorder, the screenshot run and the Firefox check set it by
+  name; `packages/walkd/test/native-root.ts` is the net under every walkd unit
+  test. In `serve()` the writer is off unless the caller asks, the same way the
+  clipboard is.
 - **Streams are append-only.** Nothing in `items.jsonl` / `verdicts.jsonl` is
   ever rewritten; state is derived. A torn last line is skipped, never a reason
   to truncate. All store mutations run under the per-walk lock.
@@ -72,7 +80,7 @@ product that used it.
 ## How to check your work
 
 ```bash
-npm run build && npm test          # 34 files, 470 unit tests
+npm run build && npm test          # 35 files, 529 unit tests
 npm run e2e                        # 35 Playwright tests, unpacked extension vs fixtures/site
 npm run pack:check                 # before a publish: the two packages as npm would send them
 node packages/walkd/bin/walkd.js status

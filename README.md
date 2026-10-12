@@ -25,8 +25,11 @@ Then the extension: [sidewalk on the Chrome Web Store](https://chromewebstore.go
 
 walkd makes a token the first time it starts and answers only a caller that has
 it. Your agent reads it from walkd's own folder. The panel cannot read files, so
-you paste it into the gear once. The token that was just made is already on
-your clipboard. A restart serves the same token.
+you paste it into the gear once: the token walkd just made is already on your
+clipboard, and the clipboard clears itself a short while later. A restart serves
+the same token, so the paste is one paste. walkd also registers a small native
+messaging host at every start, which is how a later panel will ask walkd for the
+token instead of waiting for you to paste it.
 
 Works on macOS, Linux and Windows. [`MANUAL.md`](MANUAL.md) §1–§3
 has the longer version, including the JSON form of the MCP entry.
@@ -59,6 +62,11 @@ It adds the MCP server and the `walk-author` skill, with no file path:
 claude plugin marketplace add kesensoy/sidewalk
 claude plugin install sidewalk@sidewalk
 ```
+
+There is no `walkd serve` on this path: the MCP server starts one the first time
+you run `claude` after installing. That daemon puts its token on your clipboard,
+so open the side panel, open its gear and paste. Your agent will say the same
+thing if you ask it for a walk before the panel is open.
 
 ## How it works
 

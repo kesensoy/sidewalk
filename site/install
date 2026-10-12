@@ -86,7 +86,12 @@ fi
 # `walkd start` detaches, and the token it minted is on the clipboard when it
 # returns — that is where the paste below comes from. A daemon that was already
 # running keeps the token it already had, so `walkd token --copy` is what puts
-# that one on the clipboard instead.
+# that one on the clipboard instead. Either way the clipboard clears itself
+# afterwards, and the line walkd prints says how long it holds it.
+#
+# A start also registers walkd's native messaging host, which is how a later
+# panel will ask for the token rather than wait for the paste. Nothing reads it
+# yet, so the closing lines below still say to paste.
 #
 # Neither branch says where the token went: `walkd start` and `walkd token
 # --copy` each say that themselves, in one line, and they are the half that
@@ -113,5 +118,6 @@ fi
 say "Two things left:"
 say "1. Add the extension from the Chrome Web Store:"
 say "   chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed"
-say "2. Open the panel's gear, paste the token, Save. The daemon keeps that"
-say "   token across restarts, so you paste it once."
+say "2. Open the side panel. When it asks for a token, the token is on your"
+say "   clipboard: open its gear, paste, Save. The daemon keeps that token"
+say "   across restarts, so you paste it once."

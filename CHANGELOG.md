@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.0.4 — 2026-10-12 — the token reaches the panel
+
+The plugin path was the one path that ended in a terminal step. The MCP server
+starts a daemon behind the person's back, with its output thrown away, so the
+token it made landed in a file and nowhere a person could reach — and the pane's
+answer was a command to run. These four changes close that, and lay the daemon's
+half of the channel that will close it with no paste at all.
+
+- **The daemon your agent starts puts its token on your clipboard.**
+  `sidewalk-mcp` used to tell it `--no-copy`, on the grounds that a silent
+  clipboard write says nothing to anybody. The flag is gone and the silence is
+  answered instead: the clipboard clears itself afterwards, and the agent is
+  told to say where the token went.
+- **walkd registers a native messaging host at every start.** A small `host.js`
+  and a 0700 wrapper in `<data dir>/native/`, and one manifest per browser
+  installed for your user — every Chromium fork's own folder on macOS and
+  Linux, Firefox's twin, four `HKCU` values on Windows. Native messaging is the
+  one channel out of a browser extension that is not loopback TCP, so it is how
+  a later panel will ask walkd for the token itself. **Nothing reads it in this
+  release**; the panel's half goes through both stores separately, and the
+  manifests have to be on disk before any panel can ask. `walkd native`,
+  `walkd native --status` and `walkd native --remove` are the three things you
+  can do with it by hand. All of it is best effort and none of it can fail a
+  start.
+- **The clipboard write conceals the token, and clears it again.** On a Mac it
+  goes through AppKit so the value carries
+  `org.nspasteboard.ConcealedType`, which the clipboard history managers read
+  as "do not keep this" — `pbcopy` cannot set it. And a copy now starts a
+  detached `walkd clipboard-clear`, which 90 seconds later clears the clipboard
+  only if what is on it still hashes to the token, so anything you copied in the
+  meantime is left alone. `--keep` turns the timer off.
+- **`viewers`: the agent is told whether anybody is watching.** walkd counts its
+  open `/events` streams — only a panel holds one — and reports the count on
+  `/health`. `walk_open` returns it, and so does a `walk_wait` that comes back
+  empty. At 0 the server's instructions and the `walk-author` skill tell the
+  agent, in the same words, to say *open the sidewalk side panel*, and to say
+  where the token is rather than ask for it. `walk_open` also says
+  `started: true` when that MCP process started the daemon itself.
+
 ## 1.0.3 — 2026-10-12 — the plugin folder
 
 - **The Claude Code plugin is `plugin/`.** The manifest, the walk-author

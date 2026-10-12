@@ -99,12 +99,82 @@ into the pane's gear, where it is kept in `chrome.storage.local` as
 **`walkd:token`** beside the port. That is one paste, because the daemon keeps
 the token. A daemon that mints one puts it on the clipboard itself, so on a
 first start the paste is all that is left. `--no-copy` turns that off; the e2e and the demo recorder pass it.
+**The daemon your agent starts does the same.** `sidewalk-mcp` starts one when
+nothing is answering, and before 1.0.4 it told that daemon `--no-copy` — which
+left the plugin path, the one a stranger arrives on, with its token in a file
+and nowhere a person could reach. It copies now.
 
 ```bash
 node packages/walkd/bin/walkd.js token            # prints it
 node packages/walkd/bin/walkd.js token --copy     # onto the clipboard (pbcopy / clip / wl-copy / xclip / xsel)
 node packages/walkd/bin/walkd.js token --rotate   # a new one, written and copied; restart the daemon to serve it
+node packages/walkd/bin/walkd.js token --copy --keep   # and leave it on the clipboard
 ```
+
+**What the clipboard does with it.** The token is a long-lived credential, not a
+one-time code, so two things happen that would not be worth doing for a short
+one.
+
+On a Mac the write goes through AppKit rather than `pbcopy`, because `pbcopy`
+cannot mark a value `org.nspasteboard.ConcealedType` — the type Raycast, Alfred,
+Maccy and Clipy read as "do not keep this". `pbcopy` is still the fallback when
+`osascript` is not there or has no pasteboard to write to. On Linux and Windows
+the commands are what they were.
+
+And the token does not stay there. A copy starts a detached
+`walkd clipboard-clear --after 90000 --expect <sha256 of the token>`, which
+outlives the `walkd serve` that started it, waits 90 seconds, reads the
+clipboard back, and clears it **only if what is on it still hashes to the
+token**. So a clipboard you have used for something else in the meantime is left
+alone — that compare is there for your sake, not against an adversary. The
+command is given the hash and never the token, because a process list is
+readable by other users. `--keep` turns the timer off for that copy, and the
+line walkd prints says how long the clipboard will hold it.
+
+`wl-copy --paste-once` would hand the value over exactly once and stop serving
+it; it is deliberately not used, because a paste into the gear can miss and you
+may want the token again a minute later.
+
+**The native messaging host.** At every start, `walkd serve` writes a small
+native messaging host and registers it with the browsers installed for your
+user. Native messaging is the one channel out of a browser extension that is not
+loopback TCP: the browser resolves a manifest from a directory only your own
+user can write, launches the program it names, and refuses every extension but
+the one that manifest lists. That is how a later panel will get the token
+without the paste.
+
+**Nothing reads it yet.** The panel's half ships in a later release through both
+stores, and the manifests have to be on disk before any panel can ask — so they
+go in now. Until then the clipboard and the gear are the whole of it, and they
+stay the fallback afterwards for a browser the host cannot reach (a Snap
+Chromium, a Flatpak browser, a managed machine).
+
+What a start writes: `<data dir>/native/host.js` (copied out of walkd's own
+package, so an npx cache sweep cannot take it away), a wrapper beside it at mode
+0700 naming this node and this daemon's state directory absolutely, and one
+manifest per browser — `~/Library/Application Support/<browser>/NativeMessagingHosts/sh.sidewalk.walkd.json`
+on macOS, `~/.config/<browser>/NativeMessagingHosts/` on Linux,
+`~/.mozilla/native-messaging-hosts/` for Firefox, and four `HKCU\Software\…\NativeMessagingHosts`
+values on Windows pointing at a manifest in the data folder. A manifest is
+written only where the browser's own directory already exists; walkd creates the
+`NativeMessagingHosts` leaf and never a browser's folder. The wrapper is
+rewritten at every start, which is how a node that a version manager upgraded
+out from under it heals itself.
+
+All of it is best effort and none of it can fail a start: there is one line
+about it on stderr either way, and a daemon that serves walks is worth more than
+a manifest.
+
+```bash
+node packages/walkd/bin/walkd.js native            # write it now, without restarting the daemon
+node packages/walkd/bin/walkd.js native --status   # what is written where, and whether its node still exists
+node packages/walkd/bin/walkd.js native --remove   # take out everything it wrote
+```
+
+`WALKD_NATIVE_ROOT` replaces the home directory every one of those paths hangs
+off. It is a test seam, not a setting: the e2e, the demo recorder, the
+screenshot run and the Firefox check all set it, because none of them has any
+business editing the browser profiles of whoever is running them.
 
 A pane with no token, or an old one, says *walkd on 8760 needs the token* on its
 connection line and offers `npx -y sidewalk-walkd token --copy` above the cards, with the
@@ -160,6 +230,16 @@ client taking one stream per walk spent them all on streams and then queued its
 own health checks, reads and verdict posts behind them. The per-walk
 `GET /walks/:id/events` stream is unchanged and still there for other clients.
 Both ping every 15 s.
+
+**How many panels are watching.** The daemon counts its open `/events` streams
+and reports the number on `/health` as **`viewers`**. Only a panel holds one of
+those, so the count answers the one question an agent cannot otherwise ask: is
+anybody actually looking at the cards it is writing? `walk_open` returns it, and
+so does a `walk_wait` that comes back empty. At 0 the agent's instructions tell
+it to say *open the sidewalk side panel* — and, if the panel asks for a token,
+to say where the token is rather than ask for it. `walk_open` also returns
+`started: true` when that MCP process is the one that started the daemon, which
+is the one moment a person has been told nothing at all.
 
 You rarely start it by hand: `sidewalk-mcp` starts one if none is answering.
 
@@ -658,6 +738,10 @@ missing picture.
   token              the daemon's token, 0600, kept across restarts (§2)
   walkd.log          what a daemon started by `walkd start` printed
   secrets/           file-backed secret values, 0700 — the person puts them here
+  native/            the native messaging host, rewritten at every start (§2)
+    host.js          the program a browser launches, copied out of walkd's package
+    host             the wrapper the manifests point at, 0700 (host.bat on Windows)
+    package.json     one line, so host.js is read as CommonJS wherever it lands
   state/walkd.json   port, pid, data dir, started-at (macOS and Windows only)
   <project>/<walk-id>/
     walk.json        the header
@@ -667,6 +751,13 @@ missing picture.
 ```
 
 On Linux the state file is not under the data directory: it is `$XDG_STATE_HOME/walkd/walkd.json`, or `~/.local/state/walkd/walkd.json` when that variable is unset.
+
+On Windows the native messaging manifests live in `native/` too —
+`sh.sidewalk.walkd.json` and `sh.sidewalk.walkd.firefox.json` — because there a
+browser reads a registry value that points at a file anywhere, rather than
+looking in a folder of its own. On macOS and Linux the manifests are in the
+browsers' own folders and only the host, the wrapper and the one-line package
+file are here.
 
 Nothing is ever rewritten in either stream; a withdrawal is an appended record,
 and state is derived. The daemon writes nothing into any project repo: the

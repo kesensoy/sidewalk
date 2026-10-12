@@ -117,7 +117,12 @@ posix("a machine with everything", () => {
     expect(out).toContain("running in the background");
     expect(out).toContain("Two things left:");
     expect(out).toContain("Add the extension from the Chrome Web Store");
-    expect(out).toContain("paste the token, Save");
+    // The closing lines say to open the panel first and paste only when it
+    // asks. A later release has the panel asking walkd for the token itself,
+    // and these two lines are where that change will show.
+    expect(out).toContain("Open the side panel");
+    expect(out).toContain("the token is on your");
+    expect(out).toContain("paste, Save");
   });
 
   it("changes nothing on a second run: the daemon is left alone and its token copied", () => {

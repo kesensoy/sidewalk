@@ -12,7 +12,10 @@ This plugin adds two things to Claude Code:
   the sidewalk daemon on your own machine, at `127.0.0.1:8760`, and reads the
   daemon's token from the daemon's own data folder under your user directory.
   It sends nothing anywhere else. If no daemon is running, the server starts
-  one.
+  one. The first time it starts, walkd puts its token on your clipboard and
+  registers a small native messaging host, which is how a later panel will ask
+  walkd for the token by itself. For now, open the side panel's gear and paste.
+  The clipboard clears itself a short while later.
 - The `walk-author` skill, `/sidewalk:walk-author`: how to write a walk a
   person can follow, and how to wait for and read their verdicts.
 
