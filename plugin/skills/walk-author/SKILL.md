@@ -94,9 +94,10 @@ nobody.
   The daemon has a token, not a login. It hands a value only to a caller that has its token. What can still read a value is a program that can read the person's files. Demo keys and test accounts only, never a production credential. Never put a secret in do/see/pass text.
 - When you must not hold the value yourself, name a file instead:
   `{label, file: "operator-key.txt"}` — a bare filename, no path. The daemon
-  reads it from its own `secrets/` folder under its data dir, and reads only a
-  regular file of at most 64 KB (the reason and the folder are in the error if
-  it will not: tell the person what to do).
+  reads it from its own `secrets/` folder under its data dir (a regular file,
+  at most 64 KB); a file that is missing, not a regular file, over the limit
+  or unreadable refuses the add, with the reason and the folder in the
+  message, so tell the person to put the file there.
   The value does not pass through you. On a card that carries secrets the pane reports page text as its length, so a text expect's seen, buildId and the console tail come back as "(redacted, 24 chars)". On a card that carries a secret, the answer's page URL is cut to its origin and path. The screenshot is the exception: it is a picture of the site and shows whatever the site shows after the paste. Say to paste into a password field, or to turn screenshots down in the gear. A file secret survives a daemon restart.
 - Reply to an `ask` with a new info or question item, `supersedes` set to the
   asked item's id: that is what marks the ask answered (`walk_read` lists the

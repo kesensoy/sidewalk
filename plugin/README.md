@@ -8,10 +8,11 @@ words, a screenshot, the console tail and the page address.
 This plugin adds two things to Claude Code:
 
 - The `sidewalk` MCP server, started as `npx -y sidewalk-mcp@<version>`, the
-  package pinned in `package.json` here. It talks only to the sidewalk daemon
-  on your own machine, at `127.0.0.1:8760`, and reads the daemon's token from
-  the daemon's own data folder under your user directory. It sends nothing
-  anywhere else. If no daemon is running, the server starts one.
+  published package pinned to this release in the manifest. It talks only to
+  the sidewalk daemon on your own machine, at `127.0.0.1:8760`, and reads the
+  daemon's token from the daemon's own data folder under your user directory.
+  It sends nothing anywhere else. If no daemon is running, the server starts
+  one.
 - The `walk-author` skill, `/sidewalk:walk-author`: how to write a walk a
   person can follow, and how to wait for and read their verdicts.
 

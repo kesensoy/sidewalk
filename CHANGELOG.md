@@ -7,12 +7,9 @@
   the root points at it. An install gets those files and nothing else of this
   tree; before, the plugin was the repository root, so an install carried the
   whole monorepo and its lockfile. The install commands do not change.
-- **`plugin/package.json` pins the same server** the manifest runs, with a
-  lockfile, so the directory's launcher check can verify it. `scripts/version.mjs`
-  keeps that pin equal to the release.
-- **The server's instructions say which secret files are refused:** missing,
-  not a regular file, or over 64 KB, each with the reason in the message. The
-  skill already said so.
+- **The server's instructions and the skill say which secret files are
+  refused, in the same words:** missing, not a regular file, over 64 KB, or
+  unreadable, each with the reason in the message.
 
 ## 1.0.2 — 2026-10-07 — two packages
 

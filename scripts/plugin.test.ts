@@ -1,8 +1,9 @@
 /**
  * The Claude Code plugin and the marketplace that lists it, checked against
- * the shape the docs describe. `claude plugin validate .` is the authoritative
- * check and passes with one warning; it is not on every machine, so these are the
- * parts `npm test` can hold on its own.
+ * the shape the docs describe. `claude plugin validate .` checks the marketplace
+ * and the manifest, and `claude plugin validate ./plugin` opens the skill too;
+ * both pass clean. Neither is on every machine, so these are the parts
+ * `npm test` can hold on its own.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -13,7 +14,6 @@ const readJson = (f: string) => JSON.parse(fs.readFileSync(path.join(root, f), "
 
 const marketplace = readJson(".claude-plugin/marketplace.json");
 const plugin = readJson("plugin/.claude-plugin/plugin.json");
-const pluginPkg = readJson("plugin/package.json");
 const mcpPkg = readJson("packages/sidewalk-mcp/package.json");
 
 /** Every top-level key the manifest reference lists (2026-10-05). */
@@ -42,7 +42,9 @@ describe("the marketplace manifest", () => {
     expect(marketplace.plugins).toHaveLength(1);
     // An install by the manifest name fails when the two differ.
     expect(marketplace.plugins[0].name).toBe(plugin.name);
-    expect(marketplace.plugins[0].description).toBeTruthy();
+    // The marketplace's description is what a listing shows; one sentence, in
+    // both places, so neither can go stale alone.
+    expect(marketplace.plugins[0].description).toBe(plugin.description);
   });
 
   it("points at the plugin folder, with no .. in the path", () => {
@@ -90,14 +92,17 @@ describe("the plugin manifest", () => {
     // A path into the plugin would run the checkout, not the release.
     expect(args.join(" ")).not.toContain("CLAUDE_PLUGIN_ROOT");
     expect(args.join(" ")).not.toContain("/");
-    // The plugin folder's own package.json pins the same server, so the
-    // directory's launcher lock can verify it; version.mjs keeps them equal.
-    expect(pluginPkg.dependencies?.["sidewalk-mcp"]).toBe(mcpPkg.version);
   });
 
   it("ships what a listing needs beside the manifest", () => {
     expect(fs.existsSync(path.join(root, "plugin/LICENSE"))).toBe(true);
-    expect(fs.existsSync(path.join(root, "plugin/.claude-plugin/icon.png"))).toBe(true);
+    // The icon the manifest declares is the file that exists; the directory
+    // reads it once, at the first submission.
+    expect(plugin.icon).toBe("./.claude-plugin/icon.png");
+    expect(fs.existsSync(path.join(root, "plugin", plugin.icon))).toBe(true);
+    // No package.json beside the manifest: Claude Code would npm-install its
+    // lockfile into every copy of the plugin, for a server npx fetches anyway.
+    expect(fs.existsSync(path.join(root, "plugin/package.json"))).toBe(false);
     const readme = fs.readFileSync(path.join(root, "plugin/README.md"), "utf8");
     expect(readme.split(/\s+/).length).toBeGreaterThan(40);
   });
@@ -115,7 +120,8 @@ describe("the walk-author skill the plugin ships", () => {
     expect(fs.lstatSync(skill).isSymbolicLink()).toBe(false);
     // One copy of it in the tree. A new skill of its own is welcome — under
     // plugin/skills/, where the plugin's scan finds it.
-    const found = fs.globSync("**/SKILL.md", { cwd: root, exclude: p => p.includes("node_modules") });
+    // Node's glob joins with the platform separator; compare forward slashes.
+    const found = fs.globSync("**/SKILL.md", { cwd: root, exclude: p => p.includes("node_modules") }).map(p => p.split(path.sep).join("/"));
     expect(found.filter(p => p.endsWith("walk-author/SKILL.md"))).toEqual(["plugin/skills/walk-author/SKILL.md"]);
     expect(found.filter(p => !p.startsWith("plugin/skills/"))).toEqual([]);
   });
