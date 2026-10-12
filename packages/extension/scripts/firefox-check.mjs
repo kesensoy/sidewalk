@@ -49,6 +49,33 @@
  *    fail (found in review).
  *
  * Every other byte is the zip's.
+ *
+ * **What this does not cover: the hands-free token.** The panel's Connect
+ * button is proved in the e2e, on Chromium, and not here. Four things would
+ * have to change for this script to prove the Firefox half, and together they
+ * are more than the proof is worth right now:
+ *
+ * 1. The add-on would need `nativeMessaging` in `permissions`, not
+ *    `optional_permissions` — the doorhanger needs a real click, and `web-ext
+ *    run` gives no handle to click it with (it was clicked once, through
+ *    Marionette, in the verification behind this release).
+ * 2. Firefox has exactly one user-level host directory,
+ *    `~/Library/Application Support/Mozilla/NativeMessagingHosts`, and it is
+ *    the person's own — there is no `--user-data-dir` equivalent to redirect it
+ *    the way the e2e's Chromium profile does. A check that wrote there would be
+ *    writing into the home directory of whoever ran it, which is the one thing
+ *    `WALKD_NATIVE_ROOT` exists to stop.
+ * 3. So it would have to write a host under a unique name — never
+ *    `sh.sidewalk.walkd`, which is the real one — and the add-on would then
+ *    need the host name to be configurable, for a test seam in shipped code.
+ * 4. The token seam above would have to come out, or there would be nothing
+ *    left to prove.
+ *
+ * What is covered without any of that: `src/native.ts` is one code path for
+ * both browsers, its unit tests carry Firefox's own wording for the two
+ * failures it words differently, and `firefox-manifest.test.ts` holds the
+ * permission in the optional slot and the gecko id against the host's
+ * `allowed_extensions`. The first Firefox run of Connect is a person's.
  */
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs/promises";
