@@ -37,10 +37,20 @@ async function withEnv<T>(vars: Record<string, string>, fn: () => Promise<T>): P
 
 const entry = path.join(import.meta.dirname, "..", "test", "serve-entry.ts");
 
+/**
+ * Every spawn of the real CLI below gets its own fake home.
+ *
+ * `walkd serve` writes native messaging manifests into the browser profiles of
+ * whoever is running it, and a test run has no business editing the person's
+ * Chrome. `WALKD_NATIVE_ROOT` is the one variable that moves all of it, so a
+ * test that forgets it is the only way a manifest reaches a real profile.
+ */
+const nativeRoot = (tmp: string) => ({ WALKD_NATIVE_ROOT: path.join(tmp, "native-root") });
+
 describe("walkd serve", () => {
   it("writes the state file, answers /health, cleans up on SIGTERM where the platform has one", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-cli-"));
-    const env = { ...process.env, WALKD_DATA_DIR: path.join(tmp, "data"), WALKD_STATE_DIR: path.join(tmp, "state") };
+    const env = { ...process.env, WALKD_DATA_DIR: path.join(tmp, "data"), WALKD_STATE_DIR: path.join(tmp, "state"), ...nativeRoot(tmp) };
     const child = spawn(process.execPath, ["--import", "tsx", entry, "serve", "--port", "0", "--no-copy"], { env, stdio: "pipe" });
     let state = null; for (let i = 0; i < 100 && !state; i++) { await new Promise(r => setTimeout(r, 50)); state = await readState(env.WALKD_STATE_DIR); }
     expect(state?.pid).toBe(child.pid);
@@ -81,7 +91,7 @@ describe("walkd serve", () => {
 
   it("WALKD_ADVERTISE_VERSION changes what /health says and nothing else", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-cli-"));
-    const env = { ...process.env, WALKD_DATA_DIR: path.join(tmp, "data"), WALKD_STATE_DIR: path.join(tmp, "state"), WALKD_ADVERTISE_VERSION: "0.0.1" };
+    const env = { ...process.env, WALKD_DATA_DIR: path.join(tmp, "data"), WALKD_STATE_DIR: path.join(tmp, "state"), WALKD_ADVERTISE_VERSION: "0.0.1", ...nativeRoot(tmp) };
     const child = spawn(process.execPath, ["--import", "tsx", entry, "serve", "--port", "0", "--no-copy"], { env, stdio: "pipe" });
     let out = ""; child.stdout.on("data", c => { out += c; });
     let state = null; for (let i = 0; i < 100 && !state; i++) { await new Promise(r => setTimeout(r, 50)); state = await readState(env.WALKD_STATE_DIR); }
@@ -92,7 +102,9 @@ describe("walkd serve", () => {
     // never answers a caller that cannot produce its token.
     // `pid` and `startedAt` are the child's own, and the state file says the same
     // two — that is what `walkd stop` compares before it signals anything.
-    expect(h).toEqual({ ok: true, version: "0.0.1", graceMs: DEFAULT_GRACE_MS, auth: "token", pid: state!.pid, startedAt: state!.startedAt });
+    // `viewers` is 0 because nothing holds the daemon's /events stream: it is
+    // the count an agent is told so it can say "open the side panel".
+    expect(h).toEqual({ ok: true, version: "0.0.1", graceMs: DEFAULT_GRACE_MS, auth: "token", pid: state!.pid, startedAt: state!.startedAt, viewers: 0 });
     // The banner is the daemon talking about itself, so it keeps the real
     // version: only the wire is allowed to lie, and only for the e2e.
     for (let i = 0; i < 100 && !out.includes("listening on"); i++) await new Promise(r => setTimeout(r, 50));
@@ -387,13 +399,16 @@ describe("walkd serve, the token it writes", () => {
    * putting the token where a paste comes from is the half a program can do. A
    * token that was kept is not copied — the pane already has it, and taking the
    * person's clipboard for nothing is rude. `copier` is injected so no test ever
-   * writes to the real clipboard.
+   * writes to the real clipboard, and `armer` so none of them spawns the
+   * detached child that would clear it 90 seconds later.
    */
-  it("puts a token it minted on the clipboard, and says so; one it kept it leaves alone", async () => {
+  it("puts a token it minted on the clipboard, says so, and says when it clears", async () => {
     const tmp = await tmpdir();
     const copies: string[] = [];
+    const armed: string[] = [];
     const copier = async (t: string) => { copies.push(t); return { cmd: "pbcopy", args: [] }; };
-    const opts = { port: 0, dataDir: path.join(tmp, "data"), stateDir: path.join(tmp, "state"), copy: true, copier };
+    const armer = (t: string) => { armed.push(t); return { afterMs: 90_000 }; };
+    const opts = { port: 0, dataDir: path.join(tmp, "data"), stateDir: path.join(tmp, "state"), copy: true, copier, armer };
     const say = () => { const out: string[] = []; const w = vi.spyOn(process.stdout, "write").mockImplementation(((s: string) => { out.push(String(s)); return true; }) as typeof process.stdout.write); return { out, done: () => { w.mockRestore(); return out.join(""); } }; };
 
     const first = say();
@@ -403,6 +418,12 @@ describe("walkd serve, the token it writes", () => {
     expect(copies).toEqual([token]);
     expect(firstOut).toContain("a new token is on your clipboard (pbcopy)");
     expect(firstOut).toContain("open the panel's gear");
+    // A person told a credential is on their clipboard is owed the other half of
+    // the sentence: how long it stays there, and that it will not touch what
+    // they copy next.
+    expect(armed).toEqual([token]);
+    expect(firstOut).toContain("clipboard clears itself in 90 seconds");
+    expect(firstOut).toContain("leaves alone anything you copy before then");
     // Said, never shown: this line goes wherever the daemon's output goes.
     expect(firstOut).not.toContain(token);
     await stop(one);
@@ -555,7 +576,7 @@ describe("walkd start", () => {
   const started = (tmp: string, args: string[] = []) => new Promise<{ out: string; err: string; code: number | null }>(resolve => {
     const child = spawn(process.execPath, ["--import", "tsx", entry, "start", "--port", "0", "--no-copy",
       "--data-dir", path.join(tmp, "data"), "--state-dir", path.join(tmp, "state"), ...args],
-      { stdio: "pipe", env: { ...process.env, WALKD_TOKEN: "" } });
+      { stdio: "pipe", env: { ...process.env, WALKD_TOKEN: "", ...nativeRoot(tmp) } });
     let out = ""; let err = "";
     child.stdout.on("data", c => { out += c; }); child.stderr.on("data", c => { err += c; });
     child.on("exit", code => resolve({ out, err, code }));
@@ -648,7 +669,7 @@ describe("walkd --version and a flag it does not know", () => {
 
   it("prints the usage on stdout for --help", async () => {
     const r = await run(["--help"]);
-    expect(r.out).toMatch(/^usage: walkd \[serve\|start\|status\|stop\|token\]/);
+    expect(r.out).toMatch(/^usage: walkd \[serve\|start\|status\|stop\|token\|native\|clipboard-clear\]/);
     expect(r.out).toContain("--version");
     expect(r.exit).not.toBe(2);
   });
@@ -660,4 +681,155 @@ describe("walkd --version and a flag it does not know", () => {
     expect(r.err).not.toContain("    at ");
     expect(r.exit).toBe(2);
   });
+});
+
+/** stdout and stderr caught, the exit code put back, the way the suites above do it. */
+const captured = async (argv: string[], env: Record<string, string> = {}) => {
+  const out: string[] = []; const err: string[] = [];
+  const w = vi.spyOn(process.stdout, "write").mockImplementation(((s: string) => { out.push(String(s)); return true; }) as typeof process.stdout.write);
+  const e = vi.spyOn(process.stderr, "write").mockImplementation(((s: string) => { err.push(String(s)); return true; }) as typeof process.stderr.write);
+  const code = process.exitCode;
+  try { await withEnv(env, () => main(argv)); } finally { w.mockRestore(); e.mockRestore(); }
+  const exit = process.exitCode; process.exitCode = code;
+  return { out: out.join(""), err: err.join(""), exit };
+};
+
+/**
+ * The native messaging host, through the CLI.
+ *
+ * `WALKD_NATIVE_ROOT` on every run: without it these would write into the
+ * browser profiles of whoever is running the suite, which is the one thing this
+ * code must never do from a test.
+ */
+describe("walkd serve and the native messaging host", () => {
+  /** The folder a real Chrome would have made, inside the fake home. */
+  const chromeVendor = (home: string) => process.platform === "linux"
+    ? path.join(home, ".config", "google-chrome")
+    : path.join(home, "Library", "Application Support", "Google", "Chrome");
+
+  it("writes it at a start, says so in one line on stderr, and never fails the start for it", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-native-cli-"));
+    const home = path.join(tmp, "home");
+    const opts = { port: 0, dataDir: path.join(tmp, "data"), stateDir: path.join(tmp, "state"), nativeHost: true, nativeRoot: home };
+    // Windows writes no file under the home at all — the registry is its half,
+    // and `reg` writes into the person's own HKCU, so that path is covered
+    // against a stubbed `reg` in native.test.ts and not from here.
+    if (process.platform !== "win32") await fs.mkdir(chromeVendor(home), { recursive: true });
+    const err: string[] = [];
+    const e = vi.spyOn(process.stderr, "write").mockImplementation(((s: string) => { err.push(String(s)); return true; }) as typeof process.stderr.write);
+    const w = vi.spyOn(process.stdout, "write").mockImplementation((() => true) as typeof process.stdout.write);
+    let running;
+    try { running = await withEnv({ WALKD_TOKEN: "" }, () => serve(opts)); } finally { e.mockRestore(); w.mockRestore(); }
+    try {
+      const lines = err.join("").split("\n").filter(Boolean);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("native messaging host");
+      expect(lines[0]).toContain(path.join(opts.dataDir, "native"));
+      if (process.platform !== "win32") {
+        expect(lines[0]).toContain("Chrome");
+        const file = path.join(chromeVendor(home), "NativeMessagingHosts", "sh.sidewalk.walkd.json");
+        const written = JSON.parse(await fs.readFile(file, "utf8"));
+        expect(written.name).toBe("sh.sidewalk.walkd");
+        // The wrapper the manifest points at is there, and it names this node
+        // and this daemon's state directory.
+        const wrapper = await fs.readFile(written.path, "utf8");
+        expect(wrapper).toContain(process.execPath);
+        expect(wrapper).toContain(opts.stateDir);
+      }
+      // Whatever happened to the manifests, the daemon is serving.
+      expect((await (await fetch(`http://127.0.0.1:${running.port}/health`)).json()).ok).toBe(true);
+    } finally {
+      await new Promise<void>(r => running!.server!.close(() => r()));
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  }, 20000);
+
+  it("writes nothing when nobody asked, which is what every embedder and every test gets", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-native-off-"));
+    const opts = { port: 0, dataDir: path.join(tmp, "data"), stateDir: path.join(tmp, "state") };
+    const w = vi.spyOn(process.stdout, "write").mockImplementation((() => true) as typeof process.stdout.write);
+    let running;
+    try { running = await withEnv({ WALKD_TOKEN: "" }, () => serve(opts)); } finally { w.mockRestore(); }
+    try {
+      expect(await fs.stat(path.join(opts.dataDir, "native")).then(() => true, () => false)).toBe(false);
+    } finally {
+      await new Promise<void>(r => running!.server!.close(() => r()));
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  }, 20000);
+
+  it("walkd native writes it, --status reads it back, --remove takes it out", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-native-cmd-"));
+    const home = path.join(tmp, "home");
+    const dataDir = path.join(tmp, "data");
+    const stateDir = path.join(tmp, "state");
+    await fs.mkdir(stateDir, { recursive: true });
+    const env = { WALKD_NATIVE_ROOT: home, WALKD_TOKEN: "" };
+    if (process.platform === "win32") return;            // see the note above
+    await fs.mkdir(chromeVendor(home), { recursive: true });
+
+    const wrote = await captured(["native", "--data-dir", dataDir, "--state-dir", stateDir], env);
+    expect(wrote.out).toContain("written for Chrome");
+    expect(wrote.exit).toBeUndefined();
+
+    const status = await captured(["native", "--status", "--data-dir", dataDir, "--state-dir", stateDir], env);
+    expect(status.out).toContain("the host program is there");
+    expect(status.out).toContain(process.execPath);
+    expect(status.out).toContain("which is there");
+    expect(status.out).toContain("Chrome: ");
+    expect(status.out).toContain("nothing written (no ");
+
+    const gone = await captured(["native", "--remove", "--data-dir", dataDir, "--state-dir", stateDir], env);
+    expect(gone.out).toContain("removed the native messaging host");
+    expect(gone.out).toContain("sh.sidewalk.walkd.json");
+    const again = await captured(["native", "--remove", "--data-dir", dataDir, "--state-dir", stateDir], env);
+    expect(again.out).toContain("there was no native messaging host to remove");
+    await fs.rm(tmp, { recursive: true, force: true });
+  }, 20000);
+
+  it("walkd native --status says what is missing when nothing has been written", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-native-empty-"));
+    const r = await captured(["native", "--status", "--data-dir", path.join(tmp, "data"), "--state-dir", path.join(tmp, "state")],
+      { WALKD_NATIVE_ROOT: path.join(tmp, "home"), WALKD_TOKEN: "" });
+    expect(r.out).toContain("the host program is MISSING");
+    expect(r.out).toContain("no wrapper has been written yet");
+    await fs.rm(tmp, { recursive: true, force: true });
+  }, 20000);
+});
+
+/**
+ * `walkd clipboard-clear` — the detached child a copy starts. What is checked
+ * here is the argument handling and the compare, never a real clipboard write:
+ * the machine running this has a person's own clipboard on it.
+ */
+describe("walkd clipboard-clear", () => {
+  it("refuses to run without the fingerprint of the value it may clear", async () => {
+    const r = await captured(["clipboard-clear", "--after", "0"]);
+    expect(r.err).toContain("needs --expect");
+    expect(r.exit).toBe(2);
+    expect(r.out).toBe("");
+  });
+
+  it("refuses a wait that is not a count of milliseconds", async () => {
+    // `--after=-1` rather than `--after -1`: a bare `-1` reads as a flag, which
+    // parseArgs refuses one step earlier, with its own line and the same exit 2.
+    for (const bad of ["--after=-1", "--after=soon", "--after=1.5"]) {
+      const r = await captured(["clipboard-clear", bad, "--expect", "a".repeat(64)]);
+      expect(r.err).toContain("--after must be a non-negative integer");
+      expect(r.exit).toBe(2);
+    }
+    const ambiguous = await captured(["clipboard-clear", "--after", "-1", "--expect", "a".repeat(64)]);
+    expect(ambiguous.exit).toBe(2);
+    expect(ambiguous.err).toContain("usage: walkd ");
+  });
+
+  it("clears nothing when the clipboard does not hold what it was told to look for", async () => {
+    // The fingerprint of a value nothing has ever copied, so the compare fails
+    // and the person's own clipboard stays theirs. This is the only test that
+    // reads the real clipboard, and it never writes one.
+    const r = await captured(["clipboard-clear", "--after", "0", "--expect", "0".repeat(64)]);
+    expect(r.exit).toBeUndefined();
+    expect(r.err).toBe("");
+    expect(r.out).toBe("");
+  }, 20000);
 });

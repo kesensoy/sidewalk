@@ -8,7 +8,8 @@ import { DIR_MODE, WalkStore } from "./store.js";
 import { createHttpServer, VERSION } from "./http.js";
 import { defaultDataDir, defaultStateDir } from "./paths.js";
 import { ensureToken, inspectToken, newToken, readToken, TOKEN_ENV, tokenFromEnv, tokenPath, writeToken } from "./token.js";
-import { copyToClipboard, type ClipboardCommand } from "./clipboard.js";
+import { armClipboardClear, clearIfUnchanged, CLEAR_AFTER_MS, copyToClipboard, type ClipboardCommand } from "./clipboard.js";
+import { nativeLine, nativeRoots, nativeStatus, removeNativeHost, writeNativeHost, HOST_NAME, NATIVE_ROOT_ENV } from "./native.js";
 import { spawn } from "node:child_process";
 
 export type State = { port: number; pid: number; dataDir: string; startedAt: string };
@@ -68,13 +69,24 @@ export const DEFAULT_GRACE_MS = 10_000;
  * `copied` is the clipboard command that took it, `null` when none did, and
  * `copyOff` is `--no-copy` (the e2e, the demo recorder, CI: a test run must
  * never clobber the person's clipboard).
+ *
+ * `clearAfterMs` is how long the token will stay on the clipboard before the
+ * clearing child takes it off again, and `null` when nothing is clearing it —
+ * `--keep`, or a machine where the child could not be started. A person who is
+ * told a credential is on their clipboard is owed the other half of that
+ * sentence.
  */
-export type TokenNews = { file: string; kept: boolean; pinned: boolean; copied: string | null; copyOff: boolean };
+export type TokenNews = { file: string; kept: boolean; pinned: boolean; copied: string | null; copyOff: boolean; clearAfterMs?: number | null };
 
 export function tokenLine(n: TokenNews): string {
   if (n.pinned) return `walkd: the token is the one ${TOKEN_ENV} pins. It is written to ${n.file} so "walkd token" agrees. Nothing was put on your clipboard.\n`;
   if (n.kept) return `walkd: the token is unchanged, in ${n.file}, so the panel needs no new paste. "walkd token --copy" puts it on your clipboard again. "walkd token --rotate" replaces it.\n`;
-  if (n.copied) return `walkd: a new token is on your clipboard (${n.copied}). Now open the panel's gear, paste it, Save. It is kept in ${n.file}, and the next restart serves the same one.\n`;
+  if (n.copied) {
+    const clears = n.clearAfterMs
+      ? ` The clipboard clears itself in ${Math.round(n.clearAfterMs / 1000)} seconds, and leaves alone anything you copy before then.`
+      : "";
+    return `walkd: a new token is on your clipboard (${n.copied}). Now open the panel's gear, paste it, Save.${clears} It is kept in ${n.file}, and the next restart serves the same one.\n`;
+  }
   if (n.copyOff) return `walkd: a new token is in ${n.file}, and the next restart serves the same one. Run "walkd token --copy" and paste it into the panel's gear.\n`;
   return `walkd: a new token is in ${n.file}. This machine has no clipboard command (pbcopy, clip, wl-copy, xclip, xsel). Run "walkd token" to print it, then paste it into the panel's gear.\n`;
 }
@@ -83,9 +95,21 @@ export function tokenLine(n: TokenNews): string {
  * `opts.copy` is the clipboard: on for `walkd serve` and `walkd start`, off for
  * every embedder and every test, which is why it is off by default here and
  * turned on by the CLI. `opts.copier` is the seam the tests use instead of
- * writing to the machine's real clipboard.
+ * writing to the machine's real clipboard, and `opts.armer` the seam that stands
+ * in for the detached child that clears it again.
+ *
+ * `opts.nativeHost` is the browser side of the same rule, and it matters more:
+ * the native messaging manifests go into the browser profiles of whoever is
+ * running this, so a test that wrote them would be editing the person's own
+ * Chrome. Off by default, turned on by the CLI, and `opts.nativeRoot` replaces
+ * the home directory every path hangs off, which is what every test uses.
  */
-export async function serve(opts: { port: number; dataDir: string; stateDir: string; graceMs?: number; copy?: boolean; copier?: (text: string) => Promise<ClipboardCommand | null> }): Promise<Serving> {
+export async function serve(opts: {
+  port: number; dataDir: string; stateDir: string; graceMs?: number;
+  copy?: boolean; copier?: (text: string) => Promise<ClipboardCommand | null>;
+  keepClipboard?: boolean; armer?: (token: string) => { afterMs: number } | null;
+  nativeHost?: boolean; nativeRoot?: string;
+}): Promise<Serving> {
   const running = await readState(opts.stateDir);
   // "Already running" is about *our* daemon, not about whatever holds the port:
   // the answer has to name the pid this state file names (found in review).
@@ -147,11 +171,26 @@ export async function serve(opts: { port: number; dataDir: string; stateDir: str
   // taking the person's clipboard for nothing is rude.
   const fresh = !kept.reused && pinned === undefined;
   const copied = fresh && opts.copy === true ? await (opts.copier ?? copyToClipboard)(token) : null;
-  process.stdout.write(tokenLine({ file: tokenFile, kept: kept.reused, pinned: pinned !== undefined, copied: copied?.cmd ?? null, copyOff: opts.copy !== true }));
+  // A token on the clipboard is a credential on the clipboard, and the clearing
+  // child is the other half of putting it there. It is armed only when the copy
+  // actually happened, because there is nothing to clear otherwise.
+  const armed = copied && opts.keepClipboard !== true ? (opts.armer ?? (t => armClipboardClear(t)))(token) : null;
+  process.stdout.write(tokenLine({ file: tokenFile, kept: kept.reused, pinned: pinned !== undefined, copied: copied?.cmd ?? null, copyOff: opts.copy !== true, clearAfterMs: armed?.afterMs ?? null }));
   // A token file that could not be used is replaced, and that is said out loud
   // on stderr: the paste the person made has just stopped working, and the
   // reason is the only thing they can act on. One line, naming both.
   if (kept.replaced) process.stderr.write(`walkd: made a new token. The old file could not be used (${kept.replaced}): ${tokenFile}. Run "walkd token --copy" and paste it into the panel's gear again.\n`);
+  // The native messaging host, rewritten at every start so a moved node heals
+  // itself, and best effort throughout: a daemon that serves walks is worth
+  // more than a manifest, and nothing below can stop this one from serving.
+  if (opts.nativeHost === true) {
+    try {
+      const report = await writeNativeHost({ dataDir: opts.dataDir, stateDir: opts.stateDir, roots: opts.nativeRoot ? nativeRoots({ [NATIVE_ROOT_ENV]: opts.nativeRoot }) : undefined });
+      process.stderr.write(nativeLine(report));
+    } catch (e) {
+      process.stderr.write(`walkd: the native messaging host could not be written (${(e as Error).message}). The panel still takes its token from your clipboard, in the gear.\n`);
+    }
+  }
   // Only the state file goes: the token stays, so the next daemon on this data
   // dir serves the one already pasted into the pane's gear. Nothing else can
   // read it — 0600 in a 0700 dir — and `walkd token --rotate` is how a new one
@@ -170,11 +209,15 @@ export async function serve(opts: { port: number; dataDir: string; stateDir: str
 
 const OPTIONS = {
   port: { type: "string" }, "data-dir": { type: "string" }, "state-dir": { type: "string" }, "grace-ms": { type: "string" },
-  copy: { type: "boolean" }, rotate: { type: "boolean" }, "no-copy": { type: "boolean" },
+  copy: { type: "boolean" }, rotate: { type: "boolean" }, "no-copy": { type: "boolean" }, keep: { type: "boolean" },
+  // `walkd native`: what it did, or undoing it.
+  status: { type: "boolean" }, remove: { type: "boolean" },
+  // `walkd clipboard-clear`: the detached child a copy starts.
+  after: { type: "string" }, expect: { type: "string" },
   version: { type: "boolean", short: "v" }, help: { type: "boolean", short: "h" },
 } as const;
 
-const USAGE = "usage: walkd [serve|start|status|stop|token] [--port N] [--data-dir D] [--state-dir S] [--grace-ms N] [--copy] [--no-copy] [--rotate] [--version]\n";
+const USAGE = "usage: walkd [serve|start|status|stop|token|native|clipboard-clear] [--port N] [--data-dir D] [--state-dir S] [--grace-ms N] [--copy] [--no-copy] [--keep] [--rotate] [--status] [--remove] [--version]\n";
 
 export async function main(argv = process.argv.slice(2)) {
   let parsed: ReturnType<typeof parseArgs<{ args: string[]; allowPositionals: true; options: typeof OPTIONS }>>;
@@ -194,7 +237,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (cmd === "serve") {
     const grace = values["grace-ms"] === undefined ? DEFAULT_GRACE_MS : Number(values["grace-ms"]);
     if (!Number.isInteger(grace) || grace < 0) { process.stderr.write("walkd: --grace-ms must be a non-negative integer\n"); process.exitCode = 2; return; }
-    return serve({ port: Number(values.port ?? process.env.WALKD_PORT ?? 8760), dataDir: values["data-dir"] ?? defaultDataDir(), stateDir, graceMs: grace, copy: !copyOff });
+    return serve({ port: Number(values.port ?? process.env.WALKD_PORT ?? 8760), dataDir: values["data-dir"] ?? defaultDataDir(), stateDir, graceMs: grace, copy: !copyOff, keepClipboard: values.keep === true, nativeHost: true });
   }
   /**
    * `start` is `serve` with the terminal handed back: what `sidewalk.sh/install`
@@ -246,7 +289,8 @@ export async function main(argv = process.argv.slice(2)) {
       const pin = tokenFromEnv();
       const fresh = pin === undefined && !(before.ok && before.token === token);
       const copied = fresh && !copyOff ? await copyToClipboard(token) : null;
-      process.stdout.write(tokenLine({ file: tokenPath(dataDir), kept: !fresh && pin === undefined, pinned: pin !== undefined, copied: copied?.cmd ?? null, copyOff }));
+      const armed = copied && values.keep !== true ? armClipboardClear(token) : null;
+      process.stdout.write(tokenLine({ file: tokenPath(dataDir), kept: !fresh && pin === undefined, pinned: pin !== undefined, copied: copied?.cmd ?? null, copyOff, clearAfterMs: armed?.afterMs ?? null }));
     }
     return;
   }
@@ -302,8 +346,71 @@ export async function main(argv = process.argv.slice(2)) {
     const wantsClipboard = !copyOff && (values.copy === true || values.rotate === true);
     if (!wantsClipboard) { process.stdout.write(`${token}\n`); return; }
     const copied = await copyToClipboard(token);
-    if (copied) process.stdout.write(`walkd: token copied to the clipboard (${copied.cmd}). Paste it into the panel's gear.\n`);
+    if (copied) {
+      const armed = values.keep !== true ? armClipboardClear(token) : null;
+      const clears = armed ? ` The clipboard clears itself in ${Math.round(armed.afterMs / 1000)} seconds, and leaves alone anything you copy before then.` : "";
+      process.stdout.write(`walkd: token copied to the clipboard (${copied.cmd}). Paste it into the panel's gear.${clears}\n`);
+    }
     else process.stdout.write(`${token}\nwalkd: no clipboard command on this machine (pbcopy, clip, wl-copy, xclip, xsel). The token is printed above.\n`);
+    return;
+  }
+  /**
+   * The clipboard's own timer, as a command, because the thing that has to
+   * happen is a process outliving the one that put the token there: `walkd
+   * serve` ends when the person presses ctrl-C, and the clipboard would still
+   * be holding a credential.
+   *
+   * It is given the token's sha256, never the token: argv is readable by other
+   * users on Linux. After the wait it reads the clipboard back and clears it
+   * only if what is on it still hashes to that — so a person who copied
+   * something else in the meantime keeps what they copied.
+   */
+  if (cmd === "clipboard-clear") {
+    const after = values.after === undefined ? CLEAR_AFTER_MS : Number(values.after);
+    if (!Number.isInteger(after) || after < 0) { process.stderr.write("walkd: --after must be a non-negative integer of milliseconds\n"); process.exitCode = 2; return; }
+    const expect = values.expect?.trim();
+    if (!expect) { process.stderr.write("walkd: clipboard-clear needs --expect <sha256 of the value it may clear>\n"); process.exitCode = 2; return; }
+    await new Promise(r => setTimeout(r, after));
+    await clearIfUnchanged(expect);
+    return;
+  }
+  /**
+   * The native messaging host, by hand. Every `walkd serve` writes it, so this
+   * is for the two questions a start cannot answer: what is on disk right now
+   * (`--status`, whose real question is whether the node the wrapper names still
+   * exists — a version manager's upgrade leaves one pointing at a folder that is
+   * gone), and taking it back out (`--remove`).
+   */
+  if (cmd === "native") {
+    const dataDir = values["data-dir"] ?? (await readState(stateDir))?.dataDir ?? defaultDataDir();
+    if (values.remove === true) {
+      const r = await removeNativeHost({ dataDir, stateDir });
+      if (r.removed.length === 0) process.stdout.write("walkd: there was no native messaging host to remove.\n");
+      else { process.stdout.write(`walkd: removed the native messaging host ${HOST_NAME}:\n`); for (const f of r.removed) process.stdout.write(`  ${f}\n`); }
+      for (const f of r.failed) process.stderr.write(`walkd: ${f.where} could not be removed (${f.why})\n`);
+      if (r.failed.length) process.exitCode = 1;
+      return;
+    }
+    if (values.status === true) {
+      const s = await nativeStatus({ dataDir, stateDir });
+      process.stdout.write(`walkd: the native messaging host ${HOST_NAME} lives in ${s.dir}.\n`);
+      process.stdout.write(s.hostJs ? "  the host program is there\n" : "  the host program is MISSING; start walkd again to write it\n");
+      if (s.wrapper === null) process.stdout.write("  no wrapper has been written yet; start walkd again to write it\n");
+      else {
+        process.stdout.write(`  wrapper ${s.wrapper}\n`);
+        process.stdout.write(s.nodeExists ? `  it runs ${s.node}, which is there\n` : `  it runs ${s.node}, which is GONE; start walkd again to point it at this one\n`);
+      }
+      for (const f of s.found) process.stdout.write(`  ${f.browser}: ${f.file}\n`);
+      for (const a of s.absent) process.stdout.write(`  ${a.browser}: nothing written (no ${a.vendor})\n`);
+      for (const k of s.registry) process.stdout.write(`  ${k.browser}: ${k.key} ${k.value === null ? "is not set" : `= ${k.value}`}\n`);
+      return;
+    }
+    // Plain `walkd native` writes it, for a person whose daemon was already
+    // running when this release arrived and who would rather not restart it.
+    const report = await writeNativeHost({ dataDir, stateDir });
+    process.stdout.write(nativeLine(report));
+    for (const f of report.failed) process.stderr.write(`walkd: ${f.where} refused it (${f.why})\n`);
+    if (report.wrote.length === 0 && report.registry.length === 0) process.exitCode = 1;
     return;
   }
   if (cmd === "stop") {
