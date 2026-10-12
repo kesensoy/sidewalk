@@ -4,7 +4,9 @@ import { defineConfig } from "@playwright/test";
 // The ports this suite owns: walkd on 8761 and the fixture site on 9342 —
 // neither is 8760 or 9340, so a walkd and a fixture site you are already using
 // keep running while the suite does. Chrome's remote debugging is 9341; never
-// 9222, which belongs to the chrome-devtools MCP on this machine.
+// 9222, which belongs to the chrome-devtools MCP on this machine. One test
+// serves a second page on 9402 for the length of that test, to prove a walk's
+// content scripts stop at the port it named.
 export default defineConfig({
   testDir: ".",
   timeout: 120_000,

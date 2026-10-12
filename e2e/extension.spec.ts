@@ -1,6 +1,7 @@
 import { test, expect, chromium, type BrowserContext, type Page, type Worker } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { readToken } from "sidewalk-walkd";
@@ -225,7 +226,10 @@ test("item appears via SSE, Go navigates + highlights, verdict lands with screen
   // place at document_start; this says so out loud rather than by implication.
   const scripts = (await (await worker()).evaluate(() => chrome.scripting.getRegisteredContentScripts())).filter((s: any) => s.id.endsWith("w-look"));
   expect(scripts.map((s: any) => s.id).sort()).toEqual(["walkd-iso-w-look", "walkd-main-w-look"]);
-  for (const s of scripts) expect(s.matches).toContain("http://127.0.0.1/*");
+  // The walk's own origin, port included: a pattern that names a port matches
+  // that port alone (src/origin.ts), so this registration reaches the fixture
+  // site and nothing else of the person's on 127.0.0.1.
+  for (const s of scripts) expect(s.matches).toEqual([`http://127.0.0.1:9342/*`]);
 
   await panel.locator('[data-note="rim"]').fill("seam has a hairline");
   await clickInPanel(panel, site, '[data-kind="issue"][data-for="rim"]');
@@ -1291,4 +1295,233 @@ test("a walk's brief sits under its header, and a reopen with a new brief replac
   await expect(panel.locator('header[data-walk-id="w-brief"] .brief')).toHaveText("Start on the portal. Do not log out.");
   expect((await post("/walks", { project: "e2e", id: "w-brief", title: "Walk w-brief", buildRef: "fix-001", brief: "Start on the app instead." })).status).toBe(200);
   await expect(panel.locator('header[data-walk-id="w-brief"] .brief')).toHaveText("Start on the app instead.", { timeout: 15_000 });
+});
+
+/**
+ * A walk's content scripts are registered for the origin its items name — the
+ * port included, since a pattern that carries one matches that port alone
+ * (`src/origin.ts` has the readings). What that is worth is here: a second page
+ * of the person's own, on another loopback port, in a tab opened while the walk
+ * is open. Before this it got both of the walk's content scripts.
+ *
+ * The neighbour is on 9402, which is nobody's: this suite owns 8761/9342/9341
+ * and everything else it needs is 9400 or above.
+ */
+test("a walk registers for the port it named, and a page on another loopback port gets nothing", async () => {
+  const NEIGHBOUR = 9402;
+  const neighbour = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<!doctype html><title>neighbour</title><p>not part of any walk</p>");
+  });
+  await new Promise<void>((resolve, reject) => neighbour.once("error", reject).listen(NEIGHBOUR, "127.0.0.1", resolve));
+  try {
+    const { site } = await setup("w-origin");
+    await addItems("w-origin", [lookItem("og-a", { title: "On the fixture site" })]);
+    const sw = await worker();
+
+    // The pattern itself, read back out of the browser: one origin, with the
+    // port on it.
+    await expect
+      .poll(async () => (await sw.evaluate(() => chrome.scripting.getRegisteredContentScripts())).flatMap(s => s.matches ?? []), { timeout: 15_000 })
+      .toEqual([`http://127.0.0.1:9342/*`, `http://127.0.0.1:9342/*`]);
+
+    /** Does a content script answer on the page this tab is on? */
+    const answers = async (url: string) => {
+      await site.goto(url);
+      return await (await worker()).evaluate(async u => {
+        const t = (await chrome.tabs.query({})).find(x => x.url?.startsWith(u));
+        if (!t?.id) return "no tab";
+        // A content script answers this; a page with none throws "Receiving end
+        // does not exist". Nothing is injected on demand here — that happens
+        // under a Go, and this test presses nothing.
+        try { return Array.isArray(await chrome.tabs.sendMessage(t.id, { t: "content:console" })); } catch { return false; }
+      }, url);
+    };
+
+    // The control first: the method can see a content script when there is one.
+    expect(await answers(`${SITE}/other.html`), "the walk's own page").toBe(true);
+    expect(await answers(`http://127.0.0.1:${NEIGHBOUR}/`), "another port on the same host").toBe(false);
+    console.log(`origin proof: registered for http://127.0.0.1:9342/* only; a page on 127.0.0.1:${NEIGHBOUR} got no content script`);
+
+    // Leave the tab where every other test expects to find it.
+    await site.goto(`${SITE}/other.html`);
+  } finally {
+    await new Promise<void>(resolve => neighbour.close(() => resolve()));
+  }
+});
+
+/* ------------------------------------------------------- the hands-free token
+ *
+ * The panel asking walkd for its own token, through the browser, with nothing
+ * pasted. Two tests, each with a browser of its own, because what is being
+ * tested is a profile that has never been given anything: the suite's shared
+ * context has had a token pushed into its storage since `beforeAll`.
+ *
+ * Three things make this runnable at all, and each of them was measured on this
+ * machine on 2026-10-12 rather than taken from documentation:
+ *
+ * 1. **The permission has to be required in the test build.** Chrome draws a
+ *    native Views bubble for `permissions.request({nativeMessaging})` that no
+ *    automation can answer — not Playwright, not CDP, not `chrome://extensions`,
+ *    and the preferences file's MAC rejects a hand-edited grant. So the build
+ *    these two tests load is a copy of `dist` whose manifest moves
+ *    `nativeMessaging` into `permissions`. The shipped `dist` keeps
+ *    `optional_permissions`, and nothing in the build scripts knows about this:
+ *    the patch is made here, into a temp directory, so it cannot leak into a
+ *    store zip.
+ * 2. **A Chromium launched with `--user-data-dir` reads host manifests from
+ *    `<user-data-dir>/NativeMessagingHosts`, beside `Default/` and not inside
+ *    it** — so the real folders under `$HOME` are invisible to it, which is
+ *    exactly why the suite can prove this without going near the person's own
+ *    browser. The file is the one walkd's own writer produced, copied in.
+ * 3. **The lookup happens on every call**, so the manifest can be written
+ *    before or after the browser starts and nothing has to be restarted.
+ *
+ * The copy also rewrites the default port, 8760 → 8761, the way
+ * `firefox-check.mjs` does: a fresh profile has nothing in storage, so without
+ * that the pane would look for the daemon the person is actually using.
+ */
+
+/** A copy of `dist` these two tests can load: nativeMessaging required, 8761 by default. */
+async function nativeBuild(dir: string) {
+  await fs.cp(EXT, dir, { recursive: true });
+  // The maps are the only files in dist no browser reads, and the rewrite below
+  // would leave them describing something else.
+  for (const f of await fs.readdir(dir)) if (f.endsWith(".map")) await fs.rm(path.join(dir, f));
+
+  const file = path.join(dir, "manifest.json");
+  const m = JSON.parse(await fs.readFile(file, "utf8")) as { permissions: string[]; optional_permissions?: string[]; key?: string };
+  expect(m.optional_permissions, "the shipped manifest keeps it optional").toEqual(["nativeMessaging"]);
+  // The `key` travels with the copy: it is what makes this build report the
+  // store id, and the store id is the only origin the host's manifest admits.
+  expect(m.key, "the store key, or the host refuses this build").toBeTruthy();
+  m.permissions = [...m.permissions, "nativeMessaging"];
+  delete m.optional_permissions;
+  await fs.writeFile(file, `${JSON.stringify(m, null, 2)}\n`);
+
+  let found = 0;
+  for (const f of ["sw.js", "panel.js"]) {
+    const p = path.join(dir, f);
+    const before = await fs.readFile(p, "utf8");
+    found += before.split("8760").length - 1;
+    await fs.writeFile(p, before.replaceAll("8760", String(PORT)));
+  }
+  // One in each bundle: `DEFAULT_PORT`, inlined by esbuild. Any other count and
+  // the number means something else somewhere, and this is editing it.
+  expect(found, "8760 in the two bundles").toBe(2);
+}
+
+/**
+ * The Chrome host manifest walkd's own writer produces, put where a Chromium on
+ * a throwaway profile will find it. Returns what was written, so a test can say
+ * which daemon it points at.
+ */
+async function hostManifestInto(udd: string) {
+  const nativeRoot = path.join(dataDir, "native-root-e2e");
+  // walkd writes a manifest only where the browser's own folder already exists
+  // — it never invents a browser — so this run's root gets a Chrome folder in
+  // both unix layouts. Only the one this platform uses is ever read.
+  for (const vendor of [["Library", "Application Support", "Google", "Chrome"], [".config", "google-chrome"]]) {
+    await fs.mkdir(path.join(nativeRoot, ...vendor), { recursive: true });
+  }
+  // `walkd native` is the same writer a `walkd serve` runs, so the file copied
+  // below is the file a person's own browser would be given, down to the
+  // wrapper path and the state directory it names.
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [WALKD, "native", "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state")], {
+      stdio: "inherit",
+      env: { ...process.env, WALKD_NATIVE_ROOT: nativeRoot },
+    });
+    child.once("error", reject);
+    child.once("exit", code => (code === 0 ? resolve() : reject(new Error(`walkd native exited ${code}`))));
+  });
+
+  const entries = await fs.readdir(nativeRoot, { recursive: true, withFileTypes: true });
+  const hit = entries.find(e => e.isFile() && e.name === "sh.sidewalk.walkd.json");
+  expect(hit, `no host manifest under ${nativeRoot}`).toBeTruthy();
+  const from = path.join(hit!.parentPath, hit!.name);
+  const manifest = JSON.parse(await fs.readFile(from, "utf8")) as { name: string; path: string; allowed_origins: string[] };
+  // Beside `Default/`, not inside it: measured, and the one that works.
+  const into = path.join(udd, "NativeMessagingHosts");
+  await fs.mkdir(into, { recursive: true });
+  await fs.copyFile(from, path.join(into, path.basename(from)));
+  return manifest;
+}
+
+/** A browser of its own, on a profile with nothing in it. */
+async function freshPane(withHost: boolean) {
+  const udd = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-e2e-profile-"));
+  const build = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-e2e-build-"));
+  await nativeBuild(build);
+  const manifest = withHost ? await hostManifestInto(udd) : null;
+  const fresh = await chromium.launchPersistentContext(udd, {
+    channel: "chromium",
+    headless: true,
+    // No remote debugging port: 9341 belongs to the context beforeAll made.
+    args: [`--disable-extensions-except=${build}`, `--load-extension=${build}`],
+  });
+  const log: string[] = [];
+  const sw = fresh.serviceWorkers().find(w => w.url().startsWith("chrome-extension://")) ?? (await fresh.waitForEvent("serviceworker"));
+  sw.on("console", msg => log.push(`[sw:${msg.type()}] ${msg.text()}`));
+  const id = sw.url().split("/")[2];
+  const panel = await fresh.newPage();
+  await panel.goto(`chrome-extension://${id}/panel.html`);
+  const close = async () => {
+    await fresh.close();
+    await fs.rm(udd, { recursive: true, force: true });
+    await fs.rm(build, { recursive: true, force: true });
+  };
+  return { fresh, sw, id, panel, log, manifest, close };
+}
+
+test("a fresh profile with no token asks walkd's host for it and is let in with nothing pasted", async () => {
+  const pane = await freshPane(true);
+  try {
+    // The key in the manifest is what makes an unpacked build report the store
+    // id, and the store id is the one origin the host's manifest admits.
+    expect(pane.id).toBe("fiibejlikopcaplomihaegmbanhjjmed");
+    expect(pane.manifest!.allowed_origins).toEqual([`chrome-extension://${pane.id}/`]);
+    expect(pane.manifest!.name).toBe("sh.sidewalk.walkd");
+    console.log(`hands-free proof: extension id ${pane.id}, host ${pane.manifest!.name} -> ${pane.manifest!.path}`);
+
+    // Nothing was pasted and nothing was pushed into storage: this profile has
+    // never been told anything at all.
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get(["walkd:token", "walkd:port"]))) as Record<string, unknown>).toEqual({});
+
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    // No notice, and the gear never opened itself for a token.
+    await expect(pane.panel.locator(".note.token")).toHaveCount(0);
+
+    const stored = (await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"];
+    expect(stored).toBe(token);
+    expect(String(stored).length).toBeGreaterThan(20);
+    // The worker's own account of it.
+    expect(pane.log.join("\n")).toContain(`the native messaging host handed over the token for ${PORT}`);
+    console.log(`hands-free proof: panel connected to walkd on ${PORT} with no paste; the stored token is the daemon's (${String(stored).length} characters, ${String(stored) === token ? "identical" : "DIFFERENT"})`);
+  } finally {
+    await pane.close();
+  }
+});
+
+test("with no host manifest on disk the same profile says so and offers Connect, with the command under it", async () => {
+  const pane = await freshPane(false);
+  try {
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.token")).toBeVisible();
+    await expect(pane.panel.locator(".note.token")).toContainText("Press Connect and allow the panel to talk to walkd");
+    await expect(pane.panel.locator(".note.token button[data-connect]")).toHaveText("Connect");
+    await expect(pane.panel.locator(".note.token code")).toHaveText("npx -y sidewalk-walkd token --copy");
+    // The gear opened itself, so the field the notice's second half points at
+    // is on screen.
+    await expect(pane.panel.locator("#prefs #token")).toBeVisible();
+    // The worker did ask, and the browser's answer was the one four different
+    // manifest mistakes all produce.
+    expect(pane.log.join("\n")).toContain("no token through the browser (noHost");
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBeUndefined();
+    console.log(`hands-free proof: with no manifest the pane says "walkd on ${PORT} needs the token", offers Connect, and keeps the command`);
+  } finally {
+    await pane.close();
+  }
 });
