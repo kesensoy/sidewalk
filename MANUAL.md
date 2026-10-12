@@ -724,8 +724,10 @@ warning **once, when you load the extension**, and nothing is ever asked
 during a walk.
 
 Two things a walk needs come out of that. `main.js` and `content.js` register
-at `document_start` for the hosts the walk's items point at (hosts, not
-origins: a Chrome match pattern carries no port), which is the
+at `document_start` for the origins the walk's items point at — the scheme, the
+host and the port, since a pattern that names a port matches that port and no
+other (measured on Chromium 151, 2026-10-12; the rule that patterns cannot
+carry one is not what the browser does). That registration is the
 only way to catch a console error that happens while the page is loading —
 `main.js` runs in the page's own world, where the page's `console` actually
 lives, and forwards each line to the isolated content script that holds the
