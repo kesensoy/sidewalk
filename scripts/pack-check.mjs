@@ -41,7 +41,8 @@ const problems = [];
 const say = s => console.log(s);
 const fail = s => problems.push(s);
 
-const npm = (args, cwd) => execFileSync("npm", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+// On Windows `npm` is `npm.cmd`, which Node will only run through a shell.
+const npm = (args, cwd) => execFileSync("npm", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32" });
 const readJson = f => JSON.parse(fs.readFileSync(f, "utf8"));
 
 /** `npm pack --dry-run --json` is an array of one report. */

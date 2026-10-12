@@ -1,0 +1,36 @@
+# The gates a push owes, run on a cold clone on the three operating systems
+# the manual names. Everything here is what `npm test` and `npm run pack:check`
+# already do on the owner's machine; the point of the matrix is the two
+# machines he does not have in front of him. Nothing is published, deployed
+# or uploaded from here.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # `pretest` runs the version check, so a number that drifts in one of
+      # its eight places fails here before any test does.
+      - run: npm test
+      - run: npm run pack:check
