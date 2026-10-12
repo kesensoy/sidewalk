@@ -1,0 +1,8 @@
+{
+  "name": "sidewalk-plugin",
+  "private": true,
+  "description": "Pins the MCP server the plugin manifest runs, so the directory can verify it.",
+  "dependencies": {
+    "sidewalk-mcp": "1.0.3"
+  }
+}

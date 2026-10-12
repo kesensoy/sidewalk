@@ -199,9 +199,10 @@ and prints what is left. The script is `site/install`; it never uses sudo.
 
 **Or as a Claude Code plugin.** `claude plugin marketplace add kesensoy/sidewalk`
 then `claude plugin install sidewalk@sidewalk` installs the same server —
-`.claude-plugin/plugin.json` runs `npx -y sidewalk-mcp@<this release>`, with the
-pin held by `scripts/version.mjs` — and the walk-author skill with it, as
-`/sidewalk:walk-author`. The repository is both the marketplace and the plugin.
+`plugin/.claude-plugin/plugin.json` runs `npx -y sidewalk-mcp@<this release>`,
+with the pin held by `scripts/version.mjs` — and the walk-author skill with it,
+as `/sidewalk:walk-author`. The repository is the marketplace; `plugin/` is the
+plugin, so an install gets those few files and nothing else of this tree.
 
 From a checkout, point the agent at the built entry instead. With Claude
 Code the one-liner is `claude mcp add --scope user sidewalk -- node <absolute
@@ -486,7 +487,7 @@ what they said.
 Every agent that connects gets these rules as the server's **instructions**
 (the MCP initialize handshake carries them; Claude Code shows them as server
 instructions), so nothing has to be installed for an agent to write a good
-walk. The same text is `skills/walk-author/SKILL.md` for projects that want it
+walk. The same text is `plugin/skills/walk-author/SKILL.md` for projects that want it
 in their tree; `packages/sidewalk-mcp/src/instructions.ts` is the source.
 
 - `sequence` is **one page and several things to do on it in order**: `url`,

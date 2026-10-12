@@ -12,7 +12,8 @@ const root = path.resolve(import.meta.dirname, "..");
 const readJson = (f: string) => JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
 
 const marketplace = readJson(".claude-plugin/marketplace.json");
-const plugin = readJson(".claude-plugin/plugin.json");
+const plugin = readJson("plugin/.claude-plugin/plugin.json");
+const pluginPkg = readJson("plugin/package.json");
 const mcpPkg = readJson("packages/sidewalk-mcp/package.json");
 
 /** Every top-level key the manifest reference lists (2026-10-05). */
@@ -44,9 +45,9 @@ describe("the marketplace manifest", () => {
     expect(marketplace.plugins[0].description).toBeTruthy();
   });
 
-  it("points at the marketplace root, with no .. in the path", () => {
+  it("points at the plugin folder, with no .. in the path", () => {
     const source: string = marketplace.plugins[0].source;
-    expect(source).toBe(".");
+    expect(source).toBe("./plugin");
     expect(source).not.toContain("..");
     // The plugin root is where its manifest and its skills are.
     expect(fs.existsSync(path.join(root, source, ".claude-plugin/plugin.json"))).toBe(true);
@@ -89,6 +90,16 @@ describe("the plugin manifest", () => {
     // A path into the plugin would run the checkout, not the release.
     expect(args.join(" ")).not.toContain("CLAUDE_PLUGIN_ROOT");
     expect(args.join(" ")).not.toContain("/");
+    // The plugin folder's own package.json pins the same server, so the
+    // directory's launcher lock can verify it; version.mjs keeps them equal.
+    expect(pluginPkg.dependencies?.["sidewalk-mcp"]).toBe(mcpPkg.version);
+  });
+
+  it("ships what a listing needs beside the manifest", () => {
+    expect(fs.existsSync(path.join(root, "plugin/LICENSE"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "plugin/.claude-plugin/icon.png"))).toBe(true);
+    const readme = fs.readFileSync(path.join(root, "plugin/README.md"), "utf8");
+    expect(readme.split(/\s+/).length).toBeGreaterThan(40);
   });
 
   it("leaves no .mcp.json at the root, which would also be project scope", () => {
@@ -97,17 +108,16 @@ describe("the plugin manifest", () => {
 });
 
 describe("the walk-author skill the plugin ships", () => {
-  const skill = path.join(root, "skills/walk-author/SKILL.md");
+  const skill = path.join(root, "plugin/skills/walk-author/SKILL.md");
 
   it("sits where the default skills/ scan looks, as one copy", () => {
     expect(fs.existsSync(skill)).toBe(true);
     expect(fs.lstatSync(skill).isSymbolicLink()).toBe(false);
-    // One copy of it in the tree: the plugin reuses this file rather than
-    // holding a second one that could drift from it. A new skill of its own is
-    // welcome — under skills/, where the default scan finds it.
+    // One copy of it in the tree. A new skill of its own is welcome — under
+    // plugin/skills/, where the plugin's scan finds it.
     const found = fs.globSync("**/SKILL.md", { cwd: root, exclude: p => p.includes("node_modules") });
-    expect(found.filter(p => p.endsWith("walk-author/SKILL.md"))).toEqual(["skills/walk-author/SKILL.md"]);
-    expect(found.filter(p => !p.startsWith("skills/"))).toEqual([]);
+    expect(found.filter(p => p.endsWith("walk-author/SKILL.md"))).toEqual(["plugin/skills/walk-author/SKILL.md"]);
+    expect(found.filter(p => !p.startsWith("plugin/skills/"))).toEqual([]);
   });
 
   it("has the frontmatter Claude Code loads it by", () => {

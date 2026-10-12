@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.3 — 2026-10-12 — the plugin folder
+
+- **The Claude Code plugin is `plugin/`.** The manifest, the walk-author
+  skill, a README, the licence and an icon live there, and the marketplace at
+  the root points at it. An install gets those files and nothing else of this
+  tree; before, the plugin was the repository root, so an install carried the
+  whole monorepo and its lockfile. The install commands do not change.
+- **`plugin/package.json` pins the same server** the manifest runs, with a
+  lockfile, so the directory's launcher check can verify it. `scripts/version.mjs`
+  keeps that pin equal to the release.
+- **The server's instructions say which secret files are refused:** missing,
+  not a regular file, or over 64 KB, each with the reason in the message. The
+  skill already said so.
+
 ## 1.0.2 — 2026-10-07 — two packages
 
 - **The schema package is folded into `sidewalk-walkd`.** The contract it held

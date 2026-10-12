@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// One version number, five files: the three package.json versions (and the
-// internal pins between them), the extension's manifest, and the Claude Code
+// One version number, six files: the three package.json versions (and the
+// internal pins between them), the extension's manifest, the Claude Code
 // plugin manifest — whose MCP entry pins the published package as
 // `sidewalk-mcp@X.Y.Z`, so a plugin install can never ask the registry for a
-// version this release did not ship. Exact, never a range: npx reuses any
+// version this release did not ship — and the plugin folder's package.json,
+// which pins the same server for the directory's launcher lock. Exact, never a range: npx reuses any
 // cached version that satisfies a range without asking the registry, so a
 // caret would not carry patches either. The daemon and the MCP server read
 // theirs from package.json at runtime, so this is every place the number is
@@ -17,7 +18,9 @@ const root = path.resolve(import.meta.dirname, "..");
 const PACKAGES = ["packages/walkd", "packages/sidewalk-mcp", "packages/extension"];
 const INTERNAL = ["sidewalk-walkd", "sidewalk-mcp"];
 const MANIFEST = "packages/extension/manifest.json";
-const PLUGIN = ".claude-plugin/plugin.json";
+const PLUGIN = "plugin/.claude-plugin/plugin.json";
+/** The plugin folder's own package.json pins the same server for the directory's launcher lock. */
+const PLUGIN_PKG = "plugin/package.json";
 /** The published package the plugin's MCP entry runs, pinned in its args. */
 const PLUGIN_PIN = /("sidewalk-mcp@)([^"]+)(")/;
 const SEMVER = /^\d+\.\d+\.\d+$/;
@@ -38,6 +41,7 @@ function spellings() {
   // A pin the regex cannot find is reported as missing rather than skipped, so
   // deleting the pin fails the check instead of passing it.
   out.push([`${PLUGIN} mcpServers.sidewalk args sidewalk-mcp@`, readText(PLUGIN).match(PLUGIN_PIN)?.[2] ?? "(no sidewalk-mcp@ pin)"]);
+  out.push([`${PLUGIN_PKG} dependencies.sidewalk-mcp`, readJson(PLUGIN_PKG).dependencies?.["sidewalk-mcp"] ?? "(no sidewalk-mcp dependency)"]);
   return out;
 }
 
@@ -72,7 +76,9 @@ function set(next) {
   fs.writeFileSync(g, fs.readFileSync(g, "utf8")
     .replace(/("version":\s*")[^"]+(")/, `$1${next}$2`)
     .replace(PLUGIN_PIN, `$1${next}$3`));
-  console.log(`version ${next}; now: npx -y npm@11 install --package-lock-only`);
+  const k = path.join(root, PLUGIN_PKG);
+  fs.writeFileSync(k, fs.readFileSync(k, "utf8").replace(/("sidewalk-mcp":\s*")[^"]+(")/, `$1${next}$2`));
+  console.log(`version ${next}; now: npx -y npm@11 install --package-lock-only, here and in plugin/`);
   return check();
 }
 

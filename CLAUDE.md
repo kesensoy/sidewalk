@@ -13,7 +13,7 @@ Start with `MANUAL.md` — it is the operator manual and is kept current.
 | Agent face: the six MCP tools | `packages/sidewalk-mcp/src/server.ts` |
 | Extension: worker / content / page-world / panel | `packages/extension/src/{sw,content,main,panel}.ts` |
 | The marketing demo: Lamppost, a walk of every feature, and the launcher that plays the agent | `demo/README.md` |
-| The Claude Code plugin and the marketplace that lists it | `.claude-plugin/` |
+| The Claude Code plugin and the marketplace that lists it | `plugin/` and `.claude-plugin/marketplace.json` |
 | The one-page site and `sidewalk.sh/install` | `site/README.md` |
 
 ## What this is

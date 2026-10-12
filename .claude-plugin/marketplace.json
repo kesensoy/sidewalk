@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "sidewalk",
-      "source": ".",
+      "source": "./plugin",
       "description": "Walk what your agent built, in a Chrome side panel. Adds the sidewalk MCP server and the walk-author skill."
     }
   ]

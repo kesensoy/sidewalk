@@ -161,7 +161,7 @@ question of yours arrives with the line that tells it to answer in the pane.
   testing.
 - [`CHANGELOG.md`](CHANGELOG.md) is what shipped when.
 - [`PRIVACY.md`](PRIVACY.md) is what is stored where, and what is sent.
-- [`skills/walk-author/SKILL.md`](skills/walk-author/SKILL.md) is how to
+- [`plugin/skills/walk-author/SKILL.md`](plugin/skills/walk-author/SKILL.md) is how to
   write a good walk. Agents get the same text as MCP server instructions the
   moment they connect.
 
