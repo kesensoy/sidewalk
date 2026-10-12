@@ -77,7 +77,10 @@ afterEach(() => {
   }
 });
 
-describe("the script itself", () => {
+// The script is POSIX sh and these run it; a Windows runner has no /bin/sh.
+const posix = describe.skipIf(process.platform === "win32");
+
+posix("the script itself", () => {
   const text = fs.readFileSync(script, "utf8");
 
   it("parses as POSIX sh", () => {
@@ -99,7 +102,7 @@ describe("the script itself", () => {
   });
 });
 
-describe("a machine with everything", () => {
+posix("a machine with everything", () => {
   it("installs the two packages, adds the server, starts the daemon, and says what is left", () => {
     const { run } = make();
     const { status, out, calls } = run();
@@ -130,7 +133,7 @@ describe("a machine with everything", () => {
   });
 });
 
-describe("a machine missing something", () => {
+posix("a machine missing something", () => {
   it("stops when there is no node", () => {
     const { run } = make({ withNode: false });
     const { status, out, calls } = run();

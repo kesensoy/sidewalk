@@ -6,6 +6,7 @@
  * costs nothing. The pace is its own module now, and `demo/pace.test.ts` is its
  * own test.
  */
+import path from "node:path";
 import { expect, it } from "vitest";
 // @ts-expect-error — the demo is plain .mjs, with no types to import.
 import { BEATS, DEFAULT_OUT, SCHEMES, parseArgs, parseSize, reads, retarget, outFor } from "./record.mjs";
@@ -127,10 +128,12 @@ it("films the terminal at the size the cut draws 1:1, by default", () => {
 });
 
 it("gives each scheme one fixed out folder, overwritten by the next take", () => {
-  expect(DEFAULT_OUT).toBe("demo/out/lamppost");
-  expect(outFor("light")).toBe("demo/out/lamppost");
-  expect(outFor("dark")).toBe("demo/out/lamppost-dark");
-  expect(outFor()).toBe("demo/out/lamppost");
+  // A filesystem path, so the platform's separator; compare as forward slashes.
+  const fwd = (p: string) => p.split(path.sep).join("/");
+  expect(fwd(DEFAULT_OUT)).toBe("demo/out/lamppost");
+  expect(fwd(outFor("light"))).toBe("demo/out/lamppost");
+  expect(fwd(outFor("dark"))).toBe("demo/out/lamppost-dark");
+  expect(fwd(outFor())).toBe("demo/out/lamppost");
 });
 
 it("lets a beat say its press is not worth a read, and reads for it by default", () => {

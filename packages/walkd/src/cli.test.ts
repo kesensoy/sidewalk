@@ -8,6 +8,9 @@ import { DEFAULT_GRACE_MS, readState, main, serve, type Serving } from "./cli.js
 import { VERSION } from "./http.js";
 import { readToken, writeToken } from "./token.js";
 
+/** Whether a pid still answers signal 0, which is the only probe Windows has too. */
+const isAlive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
 /**
  * Another program on the port the state file records: the actor of SW-1. With a
  * body it answers /health like a daemon; with none it holds the port and answers
@@ -589,6 +592,13 @@ describe("walkd start", () => {
 
     process.kill(s!.pid, "SIGTERM");
     for (let i = 0; i < 100 && await readState(stateDir); i++) await new Promise(r => setTimeout(r, 50));
+    if (process.platform === "win32") {
+      // No signal handler runs on Windows, so the daemon left its state file
+      // behind; `status` finds the pid gone and removes it, as its own test says.
+      for (let i = 0; i < 100 && isAlive(s!.pid); i++) await new Promise(r => setTimeout(r, 50));
+      const w2 = vi.spyOn(process.stdout, "write").mockImplementation((() => true) as typeof process.stdout.write);
+      try { await main(["status", "--state-dir", stateDir]); } finally { w2.mockRestore(); process.exitCode = prev; }
+    }
     expect(await readState(stateDir)).toBeNull();
     await fs.rm(tmp, { recursive: true, force: true });
   }, 30000);

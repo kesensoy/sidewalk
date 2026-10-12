@@ -128,7 +128,7 @@ describe("the walk-author skill the plugin ships", () => {
 
   it("has the frontmatter Claude Code loads it by", () => {
     const text = fs.readFileSync(skill, "utf8");
-    const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
+    const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
     expect(front).toMatch(/^name: walk-author$/m);
     expect(front).toMatch(/^description: .+/m);
   });
