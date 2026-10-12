@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { GECKO_ID, SHIM, STRICT_MIN_VERSION, patchManifest } from "./firefox-manifest.mjs";
@@ -47,6 +48,23 @@ describe("patchManifest", () => {
     expect(m.host_permissions).toEqual(["<all_urls>"]);
   });
 
+  it("drops Chrome's key, and keeps the optional permission both browsers ask for", () => {
+    const before = chrome();
+    const m = patchManifest(before);
+    // The Chrome manifest carries the Web Store public key, which is what makes
+    // an unpacked build report the store id — and the store id is what the
+    // native messaging host lets through. Firefox has no such field: the gecko
+    // id above is its identity.
+    expect(before.key).toMatch(/^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A/);
+    expect(m.key).toBeUndefined();
+    // `nativeMessaging` is optional in both, because a required permission
+    // would disable every existing install until the person accepted it again.
+    // It is never in `permissions`.
+    expect(before.optional_permissions).toEqual(["nativeMessaging"]);
+    expect(m.optional_permissions).toEqual(["nativeMessaging"]);
+    expect(m.permissions).not.toContain("nativeMessaging");
+  });
+
   it("moves the pane from a side panel to a sidebar, and the options page with it", () => {
     const m = patchManifest(chrome());
     expect(m.side_panel).toBeUndefined();
@@ -62,7 +80,7 @@ describe("patchManifest", () => {
   it("changes nothing else", () => {
     const before = chrome();
     const after = patchManifest(before);
-    const touched = ["background", "permissions", "browser_specific_settings", "sidebar_action", "options_ui", "side_panel", "options_page", "action"];
+    const touched = ["background", "permissions", "browser_specific_settings", "sidebar_action", "options_ui", "side_panel", "options_page", "action", "key"];
     for (const k of Object.keys({ ...before, ...after })) {
       if (touched.includes(k)) continue;
       expect([k, after[k]]).toEqual([k, before[k]]);
@@ -77,12 +95,26 @@ describe("patchManifest", () => {
  * forbidden" and no second chance. So the two halves have to agree, and this is
  * the only file that can see both.
  *
- * The panel's own half of native messaging arrives in a later release; the
- * manifests walkd writes are already pointing at these ids.
+ * Both halves are live now: walkd writes the manifests naming these two ids,
+ * and `src/native.ts` is the panel asking the host they point at.
  */
 describe("the ids walkd writes into the native messaging manifests", () => {
   it("names this add-on's gecko id for Firefox", () => {
     expect(FIREFOX_EXTENSIONS).toEqual([GECKO_ID]);
+  });
+
+  /**
+   * Chrome derives an extension's id from its public key: the SHA-256 of the
+   * key's DER bytes, first 16 of them, each hex digit mapped 0→a … f→p. So the
+   * `key` in the manifest and the id in `allowed_origins` are checkable against
+   * each other rather than taken on trust — and if one is ever changed without
+   * the other, the panel is refused by the host with "Access to the specified
+   * native messaging host is forbidden" and no second chance.
+   */
+  it("carries the key the store id is derived from, so the host's allowlist admits an unpacked build", () => {
+    const digest = createHash("sha256").update(Buffer.from(chrome().key, "base64")).digest("hex").slice(0, 32);
+    const id = [...digest].map(c => String.fromCharCode("a".charCodeAt(0) + parseInt(c, 16))).join("");
+    expect(CHROME_ORIGINS).toEqual([`chrome-extension://${id}/`]);
   });
 
   it("names the Chrome Web Store id this extension is listed under", () => {

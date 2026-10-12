@@ -8,6 +8,8 @@
   "side_panel": { "default_path": "panel.html" },
   "background": { "service_worker": "sw.js", "type": "module" },
   "permissions": ["sidePanel", "tabs", "activeTab", "scripting", "storage", "alarms"],
+  "optional_permissions": ["nativeMessaging"],
   "host_permissions": ["<all_urls>"],
-  "options_page": "panel.html"
+  "options_page": "panel.html",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw2CyMc5ueVqsCno3bnZLB0Z5Q++FM0jd0xCyUGm1Z8vsg8Vf1XvN7hYcIhj4+M35DeFQWQdlxL6vpinjwHuWLtG05jQZD4vQaP70zFSeoGosBtWq7SKUCHZZ9c8tTDSWs8WChntzcAHaPPYRSFzjoR99j1n1QpGRyPTojvWbSlgFIzymn1HIfNQpYPwg0Q31w96OhDv1sDR6gLVu0iUnLrUUhWJiMkj/mBVqbxWcOD6Kicjk0onbG+WzzEZ63bJ54cOZNFB2w+7vs/YkOzJ04FwvndjHqreDkejirjyJ5BZGK9CyDXk9VPv5sd76NuaCGeA0t63c1uwCv4IxPAsfwwIDAQAB"
 }

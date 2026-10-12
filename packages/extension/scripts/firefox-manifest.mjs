@@ -117,6 +117,22 @@ export function patchManifest(chrome) {
   delete m.options_page;
   m.options_ui = { page: "panel.html", open_in_tab: true };
 
+  // `key` is Chrome's, and only Chrome's.
+  //
+  // In the Chrome manifest it is the Web Store public key, which is what makes
+  // an unpacked build report the store id — the id the native messaging host
+  // names in `allowed_origins`, so a checkout's panel reaches the host the same
+  // way a store install does. Firefox has no such field: its id is
+  // `browser_specific_settings.gecko.id` above, which the host's
+  // `allowed_extensions` names instead. Left in, it is a key the validator has
+  // no meaning for in a manifest Mozilla reviews.
+  //
+  // `optional_permissions` stays. `nativeMessaging` is optional in both
+  // browsers — a required permission would disable every install that already
+  // exists until the person accepted it again — and Firefox wants the request
+  // inside a user action, which is what the panel's Connect button is for.
+  delete m.key;
+
   // `navigator.clipboard.writeText` is what the secrets row's Copy button
   // calls. Chrome allows it from a user gesture in an extension page; Firefox
   // wants the permission named. It is one of the permissions Firefox installs
