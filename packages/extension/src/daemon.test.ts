@@ -31,10 +31,10 @@ describe("DaemonLink reads", () => {
 
 describe("DaemonLink.health", () => {
   it("carries the daemon's version, null when it does not say, and null when nothing answers", async () => {
-    respond(200, { ok: true, version: "0.2.0", graceMs: 10_000 });
-    expect(await new DaemonLink("http://127.0.0.1:1").health()).toEqual({ version: "0.2.0", graceMs: 10_000 });
+    respond(200, { ok: true, version: "0.2.0", graceMs: 10_000, auth: "token" });
+    expect(await new DaemonLink("http://127.0.0.1:1").health()).toEqual({ version: "0.2.0", graceMs: 10_000, wantsToken: true });
     respond(200, { ok: true });
-    expect(await new DaemonLink("http://127.0.0.1:1").health()).toEqual({ version: null, graceMs: null });
+    expect(await new DaemonLink("http://127.0.0.1:1").health()).toEqual({ version: null, graceMs: null, wantsToken: false });
     respond(200, { ok: false });
     expect(await new DaemonLink("http://127.0.0.1:1").health()).toBeNull();
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
@@ -44,6 +44,21 @@ describe("DaemonLink.health", () => {
   // The window is what the ledge's drain bar is drawn from, so a daemon that
   // says something that is not a window has to read as "did not say" — the bar
   // is left undrawn rather than drained against a number we invented.
+  /**
+   * `auth: "token"` is how a daemon says it wants one. The worker reads it to
+   * know that a pane holding no token has somewhere to go and get one — the
+   * native messaging host — before any request has earned a 401.
+   */
+  it("says whether the daemon wants a token at all", async () => {
+    const health = () => new DaemonLink("http://127.0.0.1:1").health();
+    respond(200, { ok: true, auth: "token" });
+    expect((await health())?.wantsToken).toBe(true);
+    for (const auth of ["none", "", null, undefined, 1]) {
+      respond(200, { ok: true, auth });
+      expect((await health())?.wantsToken, `auth: ${String(auth)}`).toBe(false);
+    }
+  });
+
   it("carries the free-Undo window, and null for anything that is not one", async () => {
     const health = () => new DaemonLink("http://127.0.0.1:1").health();
     respond(200, { ok: true, version: "0.3.0", graceMs: 0 });

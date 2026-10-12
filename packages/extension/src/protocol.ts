@@ -11,7 +11,8 @@ export type PanelToSw =
   | { t: "panel:go"; walk: string; itemId: string }            // navigate tab + highlight
   | { t: "panel:submit"; walk: string; verdict: VerdictDraft } // sw captures + enqueues
   | { t: "panel:seen"; walk: string; seq: number }
-  | { t: "panel:token" };                                      // → sw re-reads the token and answers TokenAnswer
+  | { t: "panel:token" }                                       // → sw re-reads the token and answers TokenAnswer
+  | { t: "panel:connect" };                                    // → sw asks walkd's native messaging host for the token
 
 export type VerdictDraft = Omit<VerdictInput, "nonce" | "context">;
 
@@ -45,6 +46,18 @@ export type TokenCheck = "checking" | "connected" | "refused" | "noDaemon" | "no
  * moved the pane to another daemon names the one it left.
  */
 export type TokenAnswer = { check: Extract<TokenCheck, "connected" | "refused" | "noDaemon">; port: number };
+
+/**
+ * What came of pressing Connect.
+ *
+ * The permission is the pane's half — it needs the person's own click, and only
+ * a page can carry one — and the ask is the worker's, so that the token is
+ * stored by one code path and no other. `ok` means the token is in storage and
+ * the connection line is about to say so by itself; `reason` is one of
+ * `native.ts`'s, for the console. The pane says the same sentence for every
+ * reason: walkd did not answer through the browser, so paste it instead.
+ */
+export type ConnectAnswer = { ok: true; port: number } | { ok: false; reason: string };
 
 export type SwToPanel =
   | { t: "sw:state"; state: SwState };                         // full state on hello and on change

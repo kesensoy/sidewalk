@@ -45,8 +45,12 @@ export const isTokenRefusal = (e: unknown): boolean => e instanceof DaemonReject
  *  too old to say (none shipped is), or one that said something odd.
  *  `graceMs` is the free-Undo window this daemon holds a fresh verdict back
  *  for, and null the same way — a pane that does not know it draws no drain
- *  bar rather than guessing at a window it cannot see. */
-export type Health = { version: string | null; graceMs: number | null };
+ *  bar rather than guessing at a window it cannot see.
+ *  `wantsToken` is `auth: "token"`, which every shipped daemon says: it is how
+ *  a client tells a daemon that wants a token from one that does not, without
+ *  earning a 401 to find out. The worker reads it to know, before any other
+ *  request, that a pane holding no token has something to go and get. */
+export type Health = { version: string | null; graceMs: number | null; wantsToken: boolean };
 
 /**
  * The only thing in the extension that talks to walkd. Service workers have no
@@ -102,12 +106,12 @@ export class DaemonLink {
    *  so it can draw how long a green Undo has left. */
   async health(): Promise<Health | null> {
     try {
-      const h = (await (await this.short("/health")).json()) as { ok?: boolean; version?: unknown; graceMs?: unknown };
+      const h = (await (await this.short("/health")).json()) as { ok?: boolean; version?: unknown; graceMs?: unknown; auth?: unknown };
       if (h.ok !== true) return null;
       // A window has to be a finite, non-negative number of milliseconds to be
       // drawable; anything else is a daemon we do not understand on this point.
       const grace = typeof h.graceMs === "number" && Number.isFinite(h.graceMs) && h.graceMs >= 0 ? h.graceMs : null;
-      return { version: typeof h.version === "string" ? h.version : null, graceMs: grace };
+      return { version: typeof h.version === "string" ? h.version : null, graceMs: grace, wantsToken: h.auth === "token" };
     } catch {
       return null;
     }

@@ -12,7 +12,8 @@ import { replayLate } from "./late.js";
 import { unseenCount } from "./replies.js";
 import { DEFAULT_PORT, PORT_KEY, TOKEN_KEY, connectedKey, daemonBase, parsePort, parseToken } from "./port.js";
 import { UI_KEY, shotsOf } from "./settings.js";
-import { type ConsoleEntry, type GoResult, type PanelToSw, type SwState, type SwToContent, type TokenAnswer, type WalkView } from "./protocol.js";
+import { type Asked, askHost, hasNativePermission } from "./native.js";
+import { type ConnectAnswer, type ConsoleEntry, type GoResult, type PanelToSw, type SwState, type SwToContent, type TokenAnswer, type WalkView } from "./protocol.js";
 
 const link = new DaemonLink(daemonBase(DEFAULT_PORT));
 const storage = {
@@ -71,6 +72,21 @@ let connected = false;
  * starts the reconnect ladder.
  */
 let needsToken = false;
+/**
+ * The episode the native messaging host has been asked for its token in.
+ *
+ * An episode is this worker against one daemon: a port change starts a new one,
+ * and so does a refusal that lands after an answer was taken (the daemon
+ * restarted with a fresh token, or `walkd token --rotate` ran). Within one
+ * episode the host is asked once and once only — a daemon that refuses every
+ * 30-second poll would otherwise have a host process launched every 30 seconds
+ * for an answer that cannot have changed, and the needs-token notice is the
+ * honest end of that road.
+ */
+let askEpisode = 0;
+let askedIn = -1;
+/** The host's answer was taken this episode, so one refusal after it is worth one more ask. */
+let adopted = false;
 let daemonVersion: string | null = null;
 // The free-Undo window this daemon holds a fresh verdict back for. Null until
 // a daemon has said, and for one too old to say; the pane draws no drain bar
@@ -139,6 +155,10 @@ async function retarget() {
     return;
   }
   generation++;
+  // Another daemon is another token, so the host is worth asking again — and
+  // its answer about the daemon we just left would have been dropped anyway
+  // (`askHost`'s port guard).
+  askEpisode++;
   link.setBase(daemonBase(port));
   // The stream belongs to the daemon we are leaving; the refresh below opens a
   // new one against the new base.
@@ -176,6 +196,72 @@ async function checkToken(): Promise<TokenAnswer> {
   return { check: connected ? "connected" : needsToken ? "refused" : "noDaemon", port: currentPort || DEFAULT_PORT };
 }
 
+/**
+ * Ask walkd's native messaging host for the token, at most once this episode.
+ *
+ * The answer is dropped on the floor — storing it is all it is for, and the
+ * `onChanged` listener above is what reconnects on that. Synchronous on
+ * purpose: the caller is a refresh the pane is waiting on, and nothing it does
+ * depends on how this ends.
+ */
+function offerToken(): void {
+  if (askedIn === askEpisode) return;
+  askedIn = askEpisode;
+  void takeToken();
+}
+
+/**
+ * The one place a token the person did not type is written.
+ *
+ * The permission is the pane's half (it needs a click, and only a page has
+ * one); the ask is this worker's, so the token reaches storage by one code path
+ * whether it came from the gear or from the host. Every failure is a line in
+ * the console and nothing else: the pane already says what to do without one,
+ * and `native.ts` cannot tell four of the likeliest mistakes apart anyway.
+ */
+async function takeToken(): Promise<Asked> {
+  if (!(await hasNativePermission())) return { ok: false, reason: "noApi" };
+  const port = currentPort;
+  const r = await askHost(port);
+  if (!r.ok) {
+    console.warn(`walkd: no token through the browser (${r.reason}${r.said ? `: ${r.said}` : ""}). The gear still takes a pasted one.`);
+    return r;
+  }
+  try {
+    await storage.set(TOKEN_KEY, r.token);
+  } catch (e) {
+    // A storage write this worker cannot make is a token that does not land,
+    // and the pane would say nothing about it. The notice stands either way.
+    console.warn("walkd: the token the host handed over could not be stored", e);
+    return { ok: false, reason: "unknown" };
+  }
+  adopted = true;
+  console.debug(`walkd: the native messaging host handed over the token for ${port}`);
+  return r;
+}
+
+/**
+ * The person pressed Connect, and the browser has just let this extension talk
+ * to the host. Ask now, whatever this episode has already tried.
+ */
+async function connectNow(): Promise<ConnectAnswer> {
+  // A press is its own episode, and it consumes it: the automatic path must not
+  // then ask a second time on top of this one.
+  askEpisode++;
+  askedIn = askEpisode;
+  let r = await takeToken();
+  // The grant happened a moment ago in the panel, and this worker is another
+  // context. Both browsers hand the new API to contexts that are already
+  // running — measured on Firefox, and a grant does not restart the worker in
+  // Chrome either — but one short retry is cheaper than telling somebody to
+  // press a button twice.
+  if (!r.ok && r.reason === "noApi") {
+    await sleep(250);
+    r = await takeToken();
+  }
+  return r.ok ? { ok: true, port: r.port } : { ok: false, reason: r.reason };
+}
+
 // `latest`, not `inflight`: the pane says hello the moment it opens and then
 // waits on the answer, so it must not be handed a refresh that started before
 // it asked — the walk opened in between would be missing until the next alarm.
@@ -201,6 +287,14 @@ async function refreshNow() {
   // right; the last answer is not evidence about this one.
   needsToken = false;
   if (h) { daemonVersion = h.version; daemonGraceMs = h.graceMs; await noteConnected(currentPort); }
+  // The daemon wants a token and this pane holds none: a fresh install, or a
+  // profile nobody has pasted one into. Ask walkd's native messaging host for
+  // it instead of asking the person — one ask per episode, and every failure
+  // lands on the notice and the gear, which is where this used to start.
+  //
+  // Not awaited: the reads below are what the pane is waiting on, and a token
+  // that lands in storage retargets this worker on its own.
+  if (h?.wantsToken && !currentToken) offerToken();
   if (ok) {
     // Before the reads below, not after: the stream is what keeps every view
     // this refresh builds up to date, and a walk opened between the read and
@@ -227,6 +321,11 @@ async function refreshNow() {
       if (isTokenRefusal(e)) {
         console.warn("walkd: refused — the daemon wants its token", e);
         if (tok === currentToken) { needsToken = true; connected = false; }
+        // A refusal that lands after the host's token was taken is a daemon
+        // that has restarted with a new one, or a rotation: one more ask, then
+        // the notice for good.
+        if (adopted) { adopted = false; askEpisode++; }
+        offerToken();
       } else {
         // The daemon went away between the health check and the read; the pane
         // says so and the reconnect ladder takes it from here.
@@ -425,8 +524,9 @@ async function reconnect() {
  * The page's console lives in the page's own world, and a load-time error is
  * over before anything can be injected on demand — so both halves of the
  * capture are registered at document_start for as long as the walk is open,
- * scoped to the hosts its look items point at and nothing else (hosts, not
- * origins: a match pattern carries no port — `origin.ts`).
+ * scoped to the origins its look items point at and nothing else — scheme,
+ * host and port, because a pattern that names a port matches that port alone
+ * (measured; `origin.ts` has the readings).
  */
 function walkPatterns(v: WalkView): string[] {
   return matchPatterns(v.items.flatMap(i => (i.kind === "look" || i.kind === "sequence" ? [i.url] : [])));
@@ -518,6 +618,7 @@ chrome.runtime.onMessage.addListener((msg: PanelToSw, _sender, reply) => {
         return;
       }
       if (msg.t === "panel:token") { reply(await checkToken()); return; }
+      if (msg.t === "panel:connect") { reply(await connectNow()); return; }
       if (msg.t === "panel:go") { reply(await goOnce(goKey(msg.walk, msg.itemId))); return; }
       if (msg.t === "panel:submit") { reply(await submit(msg.walk, msg.verdict)); return; }
       reply({ ok: false, error: `unknown message: ${String((msg as { t?: unknown }).t)}` });
