@@ -161,9 +161,10 @@ or a fresh refusal starts a new one — so a daemon that keeps refusing does not
 have a host process launched at it every thirty seconds.
 
 If the browser does not allow it, or the host cannot be reached at all — a Snap
-Chromium, a browser under an enterprise policy, a wrapper whose node was removed
-— the notice says so in one line and the clipboard and the gear are the way
-through, as they were. The extension also carries the Web Store public key in
+Chromium, or a browser under an enterprise policy — the notice says so in one
+line and the clipboard and the gear are the way through, as they were. A wrapper
+whose node was removed reads the same way, and `walkd native --status` is what
+names that one. The extension also carries the Web Store public key in
 its manifest, which is what makes a Load-unpacked build report the store id the
 host's `allowed_origins` names; without it a checkout's panel is refused by the
 host with *Access to the specified native messaging host is forbidden*.
@@ -824,7 +825,7 @@ at the port it named. Nothing in the suite binds 8760 or 9340, and Chrome's
 remote debugging is 9341 — never 9222, which belongs to the chrome-devtools MCP. It refuses to start
 if something is already answering on 8761.
 
-Thirty-eight tests, one Chromium with the extension loaded unpacked, one walk per
+Thirty-nine tests, one Chromium with the extension loaded unpacked, one walk per
 test: an item arriving over SSE and Go navigating and highlighting; the verdict
 that carries its screenshot, build id and console tail; a capture wider than the
 cap; the gear's text size across a reload; a secret's value absent from the
@@ -855,16 +856,18 @@ nothing in storage asking walkd's native messaging host and being let in with
 nothing pasted, and the same profile with no host manifest on disk saying so and
 offering Connect with the command under it — and then pressing Connect twice,
 once with nothing there to answer, which says so in one line, and once after the
-manifest lands mid-session, which connects it.
+manifest lands mid-session, which connects it; and a `walkd token --rotate`
+under the running daemon, where the host hands over a token that daemon will
+never accept: the host is asked twice and no more however many refreshes
+follow, and the press says to restart walkd rather than to paste.
 
-The last two run a browser of their own, because what they are about is a
+The last three run a browser of their own, because what they are about is a
 profile that has never been given anything. Two things they do that nothing else
 in the suite does: they load a copy of `dist` whose manifest asks for
-`nativeMessaging` outright (Chrome's permission bubble cannot be clicked by any
-automation — not Playwright, not CDP, not `chrome://extensions`, and the
-preferences file's MAC rejects a hand-edited grant; a required permission also
-makes the button pressable in a test, since a request for one already held
-returns at once and draws nothing), and they copy the host
+`nativeMessaging` outright (no automation can press Chrome's permission bubble,
+and the preferences file's MAC rejects a hand-edited grant; a required
+permission also makes the button pressable in a test, since a request for one
+already held returns at once and draws nothing), and they copy the host
 manifest walkd's own writer produced into `<user-data-dir>/NativeMessagingHosts`,
 beside `Default/`, which is the only place a Chromium launched with
 `--user-data-dir` looks. The copy also rewrites the default port to 8761, so a

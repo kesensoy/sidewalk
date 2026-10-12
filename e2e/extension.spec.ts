@@ -1388,6 +1388,21 @@ test("a walk registers for the port it named, and a page on another loopback por
  * that the pane would look for the daemon the person is actually using.
  */
 
+/**
+ * A walkd command, run to the end, with its stdout handed back. Stderr goes
+ * straight through, so walkd's own lines show up in the suite's output the way
+ * the daemon's do.
+ */
+function run(bin: string, args: string[], env: Record<string, string> = {}): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(process.execPath, [bin, ...args], { stdio: ["ignore", "pipe", "inherit"], env: { ...process.env, ...env } });
+    let out = "";
+    child.stdout?.on("data", d => { out += String(d); });
+    child.once("error", reject);
+    child.once("exit", code => (code === 0 ? resolve(out) : reject(new Error(`${path.basename(bin)} ${args.join(" ")} exited ${code}`))));
+  });
+}
+
 /** A copy of `dist` these two tests can load: nativeMessaging required, 8761 by default. */
 async function nativeBuild(dir: string) {
   await fs.cp(EXT, dir, { recursive: true });
@@ -1433,14 +1448,7 @@ async function hostManifestInto(udd: string) {
   // `walkd native` is the same writer a `walkd serve` runs, so the file copied
   // below is the file a person's own browser would be given, down to the
   // wrapper path and the state directory it names.
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(process.execPath, [WALKD, "native", "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state")], {
-      stdio: "inherit",
-      env: { ...process.env, WALKD_NATIVE_ROOT: nativeRoot },
-    });
-    child.once("error", reject);
-    child.once("exit", code => (code === 0 ? resolve() : reject(new Error(`walkd native exited ${code}`))));
-  });
+  await run(WALKD, ["native", "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state")], { WALKD_NATIVE_ROOT: nativeRoot });
 
   const entries = await fs.readdir(nativeRoot, { recursive: true, withFileTypes: true });
   const hit = entries.find(e => e.isFile() && e.name === "sh.sidewalk.walkd.json");
@@ -1562,5 +1570,63 @@ test("with no host on disk the pane says so, and Connect says what came of it �
     console.log(`hands-free proof: Connect pressed again with the manifest in the profile — connected to walkd on ${PORT}, token identical, nothing restarted`);
   } finally {
     await pane.close();
+  }
+});
+
+/**
+ * The one way the two halves can disagree, and the loop it used to cause.
+ *
+ * `walkd token --rotate` under a running daemon writes a new token to the file
+ * and leaves the daemon serving the one in its memory — it says so when it runs.
+ * The host reads the file. So the host hands the pane a token that daemon will
+ * never accept, and before review found it the pane stored that token, took the
+ * 401 as a fresh episode, asked again, and stored the same value — which
+ * Chromium reports no `onChanged` for, so nothing retargeted and nothing
+ * settled. One host process per thirty-second alarm, and a Connect press that
+ * said nothing at all.
+ *
+ * Two asks are the floor here and the test holds them to it: one to find out
+ * what the host has, one to find out that it is the same thing again. After
+ * that the episode is over, and two forced refreshes add none.
+ */
+test("a token the host hands over that walkd refuses is said once, and not asked for again", async () => {
+  // `--no-copy`: a rotate copies by default, and the person's clipboard is
+  // never a test's to take.
+  // Two lines on stdout: what it did, then the token itself.
+  const said = await run(WALKD, ["token", "--rotate", "--no-copy", "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state")]);
+  const rotated = said.trim().split("\n").pop()!.trim();
+  expect(rotated, "the token, not walkd's own line").toMatch(/^[A-Za-z0-9_-]{20,}$/);
+  expect(rotated, "a new token in the file").not.toBe(token);
+  const pane = await freshPane(true);
+  /** How many times the host has been asked, off the worker's own console. */
+  const asks = () => pane.log.filter(l => l.includes("handed over the token") || l.includes("no token through the browser")).length;
+  try {
+    // The daemon is still serving the token it booted with, so what the host
+    // gives is refused.
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 20_000 });
+    await expect.poll(asks, { timeout: 15_000 }).toBe(2);
+    expect(pane.log.join("\n")).toContain("no token through the browser (refusedToken: the host's token is the one already refused)");
+    // What the pane stored is the file's token, which is the one being refused —
+    // so the state is real and not a pane that quietly kept the old one.
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBe(rotated);
+
+    // Two more refreshes, each of which earns its own 401: no further asks.
+    for (let i = 0; i < 2; i++) await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`);
+    expect(asks(), "the episode is over").toBe(2);
+    console.log(`rotate proof: the host was asked twice and no more; the pane holds the rotated token and walkd refuses it`);
+
+    // The press says what is wrong, and does not tell them to paste a token that
+    // is already the one being refused.
+    await pane.panel.locator(".note.token button[data-connect]").click();
+    await expect(pane.panel.locator(".note.token .said")).toHaveText("walkd refused the token the host handed over. Restart walkd, then press Connect again.", { timeout: 15_000 });
+    expect(asks(), "the press is one ask of its own").toBe(3);
+    console.log(`rotate proof: Connect says "walkd refused the token the host handed over. Restart walkd, then press Connect again."`);
+  } finally {
+    await pane.close();
+    // Hand the daemon's own token back to the file, so nothing after this test
+    // inherits a data dir whose file and daemon disagree.
+    await fs.writeFile(path.join(dataDir, "token"), `${token}\n`);
   }
 });

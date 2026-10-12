@@ -242,6 +242,14 @@ async function takeToken(): Promise<Asked> {
   }
   adopted = true;
   console.debug(`walkd: the native messaging host handed over the token for ${port}`);
+  // The `onChanged` listener would do this, and this does not wait for it. Two
+  // reasons, and the second is the one that bites: a storage write of a value
+  // that has not changed reports no event at all (Chromium), so a pane that
+  // depended on the event could be left holding a token it had never read back —
+  // and `adopt` above has to be able to compare what the host gives with what
+  // this worker holds. `retarget` is idempotent, so the event finding nothing
+  // left to move is the ordinary case.
+  await retarget();
   return r;
 }
 

@@ -119,6 +119,6 @@ fi
 say "Two things left:"
 say "1. Add the extension from the Chrome Web Store:"
 say "   chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed"
-say "2. Open the side panel and press Connect; the browser asks once. If it"
-say "   cannot, the token is on your clipboard for a short while, and"
+say "2. Open the side panel and press Connect; the browser asks once. If the"
+say "   browser cannot, the token is on your clipboard for a short while, and"
 say "   \"walkd token --copy\" puts it back; paste it into the gear."

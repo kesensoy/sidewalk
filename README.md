@@ -25,12 +25,14 @@ Then the extension: [sidewalk on the Chrome Web Store](https://chromewebstore.go
 
 walkd makes a token the first time it starts and answers only a caller that has
 it. Your agent reads it from walkd's own folder. The panel cannot read files, so
-it asks walkd for the token through the browser: press Connect in the panel and
-allow it once, and the panel picks the token up by itself. The small native
-messaging host that answers is written at every walkd start. If your browser
-cannot reach it, walkd puts the token it just made on your clipboard for a short
-while, `npx -y sidewalk-walkd token --copy` puts it back, and the panel's gear
-takes it. A restart serves the same token, so that is one paste.
+it asks walkd for the token through the browser. Press Connect in the panel and
+allow it once; after that the panel picks the token up by itself. The small
+native messaging host that answers is written at every walkd start.
+
+If your browser cannot reach that host, the token is on your clipboard for a
+short while after walkd makes it, and `npx -y sidewalk-walkd token --copy` puts
+it back. Paste it into the panel's gear. A restart serves the same token, so
+that is one paste.
 
 Works on macOS, Linux and Windows. [`MANUAL.md`](MANUAL.md) §1–§3
 has the longer version, including the JSON form of the MCP entry.

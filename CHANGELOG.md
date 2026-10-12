@@ -14,9 +14,8 @@ with nothing pasted and nothing printed.
   the connection line says *Connected to walkd on 8760* by itself. The press has
   to be the person's own: both browsers refuse a permission request outside a
   user action. If the browser does not allow it, or the host cannot be reached —
-  a Snap Chromium, an enterprise policy, a wrapper whose node was removed — the
-  notice says so in one line and the clipboard and the gear are the way through,
-  as they were. The host is asked once per episode, where a port change or a
+  a Snap Chromium, or a browser under an enterprise policy — the notice says so
+  in one line and the clipboard and the gear are the way through, as they were. The host is asked once per episode, where a port change or a
   fresh refusal starts a new one, and an answer about another daemon than the one
   the pane is on is dropped rather than sent to a daemon that never issued it.
 - **The manifest carries the Web Store public key.** A Load-unpacked build now
