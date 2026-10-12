@@ -594,10 +594,11 @@ describe("walkd start", () => {
     for (let i = 0; i < 100 && await readState(stateDir); i++) await new Promise(r => setTimeout(r, 50));
     if (process.platform === "win32") {
       // No signal handler runs on Windows, so the daemon left its state file
-      // behind; `status` finds the pid gone and removes it, as its own test says.
+      // behind; `stop` finds nothing answering on the port and removes the
+      // stale file instead of signalling, as its own test says.
       for (let i = 0; i < 100 && isAlive(s!.pid); i++) await new Promise(r => setTimeout(r, 50));
       const w2 = vi.spyOn(process.stdout, "write").mockImplementation((() => true) as typeof process.stdout.write);
-      try { await main(["status", "--state-dir", stateDir]); } finally { w2.mockRestore(); process.exitCode = prev; }
+      try { await main(["stop", "--state-dir", stateDir]); } finally { w2.mockRestore(); process.exitCode = prev; }
     }
     expect(await readState(stateDir)).toBeNull();
     await fs.rm(tmp, { recursive: true, force: true });
