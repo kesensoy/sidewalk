@@ -56,18 +56,26 @@ export const PLAIN_TYPE = "public.utf8-plain-text";
 export const CONCEALED_TYPE = "org.nspasteboard.ConcealedType";
 
 /**
- * The AppKit write, as a JavaScript-for-Automation script. `clearContents`
- * first, because NSPasteboard refuses a `setString` without it, then the same
- * string under both types.
+ * The AppKit write, as a JavaScript-for-Automation script.
+ *
+ * `declareTypes:owner:` rather than `clearContents` and two sets: it clears the
+ * pasteboard and announces both types in one step, so there is no window in
+ * which the token is on the board as plain text with no concealed marker beside
+ * it — which is the window a clipboard history manager would read it in.
+ * `NSStringPboardType` rides along by itself.
+ *
+ * Verified on this platform against a private pasteboard: both `setStringForType`
+ * calls return true and the board reports all three types
+ * (`docs/2026-10-12-token-handoff-verified.md` §7).
  */
 export function concealedScript(text: string): string {
   return [
     `ObjC.import("AppKit");`,
     `var text = ${JSON.stringify(text)};`,
     `var pb = $.NSPasteboard.generalPasteboard;`,
-    `pb.clearContents;`,
-    `if (!pb.setStringForType(text, ${JSON.stringify(PLAIN_TYPE)})) throw new Error("the pasteboard refused the text");`,
-    `pb.setStringForType(text, ${JSON.stringify(CONCEALED_TYPE)});`,
+    `pb.declareTypesOwner($([${JSON.stringify(PLAIN_TYPE)}, ${JSON.stringify(CONCEALED_TYPE)}]), $());`,
+    `if (!pb.setStringForType($(text), $(${JSON.stringify(PLAIN_TYPE)}))) throw new Error("the pasteboard refused the text");`,
+    `pb.setStringForType($(text), $(${JSON.stringify(CONCEALED_TYPE)}));`,
     `"";`,
   ].join("\n");
 }
@@ -219,7 +227,10 @@ export function armClipboardClear(
   const afterMs = opts.afterMs ?? CLEAR_AFTER_MS;
   const args = [...(opts.execArgv ?? process.execArgv), entry, "clipboard-clear", "--after", String(afterMs), "--expect", fingerprint(token)];
   try {
-    const child = (opts.spawn ?? nodeSpawn)(opts.execPath ?? process.execPath, args, { detached: true, stdio: "ignore" });
+    // `windowsHide`: a detached child with no stdio would otherwise flash a
+    // console window on Windows, 90 seconds after the person stopped thinking
+    // about walkd.
+    const child = (opts.spawn ?? nodeSpawn)(opts.execPath ?? process.execPath, args, { detached: true, stdio: "ignore", windowsHide: true });
     child.unref?.();
   } catch { return null; }
   return { afterMs, args };

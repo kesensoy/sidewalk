@@ -41,7 +41,12 @@ const healthy = async () => { try { return (await (await fetch(`${BASE}/health`)
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-shots-"));
 if (await healthy()) throw new Error(`port ${PORT} busy`);
 const site = spawn("node", [path.resolve(HERE, "../fixtures/site/serve.mjs")], { env: { ...process.env, PORT: "9342" }, stdio: "inherit" });
-const daemon = spawn("node", [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "0"], { stdio: "inherit" });
+// `--no-copy`: a daemon that mints a token puts it on the clipboard, and taking
+// the clipboard of whoever is making screenshots is not this script's business.
+// `WALKD_NATIVE_ROOT`: nor is editing their browser profiles, which a start
+// otherwise registers the native messaging host with.
+const daemon = spawn("node", [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "0", "--no-copy"],
+  { stdio: "inherit", env: { ...process.env, WALKD_NATIVE_ROOT: path.join(dataDir, "native-root") } });
 for (let i = 0; i < 200 && !(await healthy()); i++) await sleep(100);
 token = await readToken(dataDir);
 

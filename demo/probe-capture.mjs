@@ -244,7 +244,11 @@ async function probe(opts) {
 
   if (await healthy()) throw new Error(`port ${PORT} busy`);
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-probe-"));
-  const daemon = spawn(process.execPath, [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "10000"], { stdio: "ignore" });
+  // `WALKD_NATIVE_ROOT`: a start registers the native messaging host with the
+  // browser profiles under the home directory, and a probe has no business
+  // editing those.
+  const daemon = spawn(process.execPath, [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "10000"],
+    { stdio: "ignore", env: { ...process.env, WALKD_NATIVE_ROOT: path.join(dataDir, "native-root") } });
   await until(`walkd on ${PORT}`, healthy);
   // This daemon's token: it refuses every route but /health without it, and the
   // launcher and the pane below both have to carry it (secrets review).

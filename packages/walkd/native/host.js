@@ -36,8 +36,12 @@ function reply() {
   try { state = JSON.parse(fs.readFileSync(stateDir + "/walkd.json", "utf8")); }
   catch { return answer({ ok: false, reason: "no walkd is running" }); }
   // walkd writes its data directory into the state file, so the token is found
-  // without this host knowing a thing about where either one lives.
-  const dataDir = arg("--data-dir") || state.dataDir || stateDir.replace(/[\\/][^\\/]+[\\/]*$/, "");
+  // without this host knowing a thing about where either one lives. There is no
+  // guess at it from the state directory's own path: on Linux the two are
+  // siblings, not parent and child, so a guess would be wrong exactly where it
+  // mattered.
+  const dataDir = arg("--data-dir") || state.dataDir;
+  if (!dataDir) return answer({ ok: false, reason: "walkd's state file names no data directory" });
   let token;
   try { token = fs.readFileSync(dataDir + "/token", "utf8").trim(); }
   catch { return answer({ ok: false, reason: "walkd's token could not be read" }); }
@@ -50,7 +54,9 @@ process.stdin.on("data", chunk => {
   buf = Buffer.concat([buf, chunk]);
   if (buf.length < 4) return;
   const len = buf.readUInt32LE(0);
-  if (len > 1024 * 1024) return answer({ ok: false, reason: "message too large" });
+  // Paused before either answer, so no further chunk can arrive and run this
+  // handler a second time while the first answer is still being written.
+  if (len > 1024 * 1024) { process.stdin.pause(); return answer({ ok: false, reason: "message too large" }); }
   if (buf.length < 4 + len) return;
   process.stdin.pause();
   reply();
