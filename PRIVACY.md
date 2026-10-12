@@ -47,6 +47,9 @@ works on the page in front of you if you narrow the site access. Scripting, to c
 Storage, for the items above. Alarms, to look
 for `walkd`. Clipboard write on Firefox, for the Copy button.
 
+The panel can ask `walkd` for its token through the browser's native messaging. Only this extension may use that host, and nothing else travels that way. You are asked for
+that one when you press Connect, and never before.
+
 ## Questions
 
 Open an issue at [github.com/kesensoy/sidewalk/issues](https://github.com/kesensoy/sidewalk/issues).

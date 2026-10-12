@@ -10,7 +10,7 @@ Start with `MANUAL.md` — it is the operator manual and is kept current.
 | What shipped when | `CHANGELOG.md` |
 | The item / verdict / walk contract (zod, source of truth; JSON Schema via `toJsonSchema()`) | `packages/walkd/src/schema/index.ts`, published as `sidewalk-walkd/schema` |
 | Daemon: streams on disk, HTTP+SSE, CLI | `packages/walkd/src/{store,http,cli}.ts` |
-| The token, the clipboard, the native messaging host | `packages/walkd/src/{token,clipboard,native}.ts` + `packages/walkd/native/host.js`, and `MANUAL.md` §2 |
+| The token, the clipboard, the native messaging host | `packages/walkd/src/{token,clipboard,native}.ts` + `packages/walkd/native/host.js`, the panel's half in `packages/extension/src/native.ts`, and `MANUAL.md` §2 |
 | Agent face: the six MCP tools | `packages/sidewalk-mcp/src/server.ts` |
 | Extension: worker / content / page-world / panel | `packages/extension/src/{sw,content,main,panel}.ts` |
 | The marketing demo: Lamppost, a walk of every feature, and the launcher that plays the agent | `demo/README.md` |
@@ -37,7 +37,9 @@ product that used it.
   nothing automated may take them. The e2e runs its own walkd on 8761 and its
   own fixture site on 9342, pointing the extension at the first through
   `chrome.storage.local`'s `walkd:port`; Playwright debugging is 9341.
-  **Never 9222** — leave 9222 to the person's own tools.
+  **Never 9222** — leave 9222 to the person's own tools. One e2e test serves a
+  second page on 9402, to prove a walk's content scripts stop at the port it
+  named; anything else a test needs is 9400 or above.
   Unit tests bind port 0.
 - **`WALKD_NATIVE_ROOT` on anything that starts a real daemon.** A `walkd serve`
   writes native messaging manifests into the browser profiles under `$HOME`, so
@@ -84,8 +86,8 @@ product that used it.
 ## How to check your work
 
 ```bash
-npm run build && npm test          # 35 files, 529 unit tests
-npm run e2e                        # 35 Playwright tests, unpacked extension vs fixtures/site
+npm run build && npm test          # 36 files, 555 unit tests
+npm run e2e                        # 38 Playwright tests, unpacked extension vs fixtures/site
 npm run pack:check                 # before a publish: the two packages as npm would send them
 node packages/walkd/bin/walkd.js status
 ```
@@ -93,7 +95,7 @@ node packages/walkd/bin/walkd.js status
 `npm run e2e` starts its own walkd on 8761 and its own fixture site on 9342, so
 **leave the daemon you are using alone** — it is not in the suite's way and the
 suite is not in its. It refuses to start only if something already answers on
-8761. What the thirty-five tests cover is listed in `MANUAL.md` §7.
+8761. What the thirty-eight tests cover is listed in `MANUAL.md` §7.
 
 ## Process
 

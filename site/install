@@ -89,9 +89,10 @@ fi
 # that one on the clipboard instead. Either way the clipboard clears itself
 # afterwards, and the line walkd prints says how long it holds it.
 #
-# A start also registers walkd's native messaging host, which is how a later
-# panel will ask for the token rather than wait for the paste. Nothing reads it
-# yet, so the closing lines below still say to paste.
+# A start also registers walkd's native messaging host, which is how the panel
+# asks for the token rather than waiting for the paste. The closing lines below
+# lead with that and keep the clipboard as the way through for a browser the
+# host cannot reach.
 #
 # Neither branch says where the token went: `walkd start` and `walkd token
 # --copy` each say that themselves, in one line, and they are the half that
@@ -118,7 +119,6 @@ fi
 say "Two things left:"
 say "1. Add the extension from the Chrome Web Store:"
 say "   chromewebstore.google.com/detail/sidewalk/fiibejlikopcaplomihaegmbanhjjmed"
-say "2. Open the side panel. When it asks for a token, open its gear, paste, Save:"
-say "   the token is on your clipboard for a short while after walkd starts, and"
-say "   \"walkd token --copy\" puts it back. The daemon keeps that token across"
-say "   restarts, so you paste it once."
+say "2. Open the side panel and press Connect; the browser asks once. If it"
+say "   cannot, the token is on your clipboard for a short while, and"
+say "   \"walkd token --copy\" puts it back; paste it into the gear."

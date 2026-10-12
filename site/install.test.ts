@@ -117,12 +117,12 @@ posix("a machine with everything", () => {
     expect(out).toContain("running in the background");
     expect(out).toContain("Two things left:");
     expect(out).toContain("Add the extension from the Chrome Web Store");
-    // The closing lines say to open the panel first and paste only when it
-    // asks. A later release has the panel asking walkd for the token itself,
-    // and these two lines are where that change will show.
-    expect(out).toContain("Open the side panel");
-    expect(out).toContain("the token is on your");
-    expect(out).toContain("paste, Save");
+    // The closing lines lead with Connect — the panel asks walkd for the token
+    // through the browser — and keep the clipboard as the way through for a
+    // browser that cannot do it.
+    expect(out).toContain("Open the side panel and press Connect");
+    expect(out).toContain("the token is on your clipboard");
+    expect(out).toContain("paste it into the gear");
   });
 
   it("changes nothing on a second run: the daemon is left alone and its token copied", () => {
@@ -235,6 +235,27 @@ describe("_headers", () => {
       expect(html).not.toMatch(/<script(?![^>]*\ssrc=)/i);
       expect(html).not.toMatch(/\sstyle="/i);
       expect(html).not.toMatch(/\son[a-z]+="/i);
+    }
+  });
+});
+
+/**
+ * `PRIVACY.md` and `privacy.html` are the same words twice, with no build step
+ * between them — the file's own comment says to change both. Nothing checked
+ * that, and the sentence below is the one most likely to be changed in one
+ * place: it is what a store reviewer reads about the native messaging host.
+ */
+describe("the privacy policy", () => {
+  const NATIVE_LINE = "for its token through the browser's native messaging. Only this extension may use that host, and nothing else travels that way.";
+
+  it("says the same thing about the native messaging host in both copies", () => {
+    const md = fs.readFileSync(path.join(here, "..", "PRIVACY.md"), "utf8");
+    const html = fs.readFileSync(path.join(here, "privacy.html"), "utf8");
+    for (const [name, text] of [["PRIVACY.md", md], ["privacy.html", html]] as const) {
+      expect(text.replace(/\s+/g, " "), name).toContain(NATIVE_LINE);
+      // The HTML wraps its paragraphs on one line and the Markdown wraps at
+      // 79 characters, so this half is matched without its line break.
+      expect(text.replace(/\s+/g, " "), name).toContain("asked for that one when you press Connect");
     }
   });
 });

@@ -13,10 +13,11 @@ This plugin adds two things to Claude Code:
   daemon's token from the daemon's own data folder under your user directory.
   It sends nothing anywhere else. If no daemon is running, the server starts
   one. The first time it starts, walkd puts its token on your clipboard for a
-  short while and registers a small native messaging host, which is how a later
-  panel will ask walkd for the token by itself. For now, open the side panel's
-  gear and paste; `npx -y sidewalk-walkd token --copy` puts the token back on
-  the clipboard if it has gone.
+  short while and registers a small native messaging host, which is how the
+  panel asks walkd for the token by itself. Open the side panel and press
+  Connect; if that is not possible on your browser, paste the token into the
+  panel's gear, and `npx -y sidewalk-walkd token --copy` puts it back on the
+  clipboard if it has gone.
 - The `walk-author` skill, `/sidewalk:walk-author`: how to write a walk a
   person can follow, and how to wait for and read their verdicts.
 

@@ -25,11 +25,12 @@ Then the extension: [sidewalk on the Chrome Web Store](https://chromewebstore.go
 
 walkd makes a token the first time it starts and answers only a caller that has
 it. Your agent reads it from walkd's own folder. The panel cannot read files, so
-you paste it into the gear once: walkd puts the token it just made on your
-clipboard for a short while, and `npx -y sidewalk-walkd token --copy` puts it
-back. A restart serves the same token, so the paste is one paste. walkd also
-registers a small native messaging host at every start, which is how a later
-panel will ask walkd for the token instead of waiting for you to paste it.
+it asks walkd for the token through the browser: press Connect in the panel and
+allow it once, and the panel picks the token up by itself. The small native
+messaging host that answers is written at every walkd start. If your browser
+cannot reach it, walkd puts the token it just made on your clipboard for a short
+while, `npx -y sidewalk-walkd token --copy` puts it back, and the panel's gear
+takes it. A restart serves the same token, so that is one paste.
 
 Works on macOS, Linux and Windows. [`MANUAL.md`](MANUAL.md) §1–§3
 has the longer version, including the JSON form of the MCP entry.
@@ -51,7 +52,7 @@ npm run build
 npm start                       # walkd on 8760
 # chrome://extensions → Developer mode → Load unpacked → packages/extension/dist
 claude mcp add --scope user sidewalk -- node /absolute/path/to/packages/sidewalk-mcp/bin/sidewalk-mcp.js
-node packages/walkd/bin/walkd.js token --copy   # paste it into the panel's gear
+node packages/walkd/bin/walkd.js token --copy   # only if Connect cannot: paste it into the gear
 ```
 
 ### As a Claude Code plugin
@@ -65,9 +66,15 @@ claude plugin install sidewalk@sidewalk
 
 There is no `walkd serve` on this path: the MCP server starts one the first time
 you run `claude` after installing. That daemon puts its token on your clipboard
-for a short while. Open the side panel, open its gear and paste; if the clipboard
-has moved on, `npx -y sidewalk-walkd token --copy` puts it back. Your agent will
-say the same thing if you ask it for a walk before the panel is open.
+for a short while.
+
+Open the side panel and press Connect; the browser asks once whether the panel
+may talk to walkd, and after that the panel picks the token up by itself. If that
+is not possible on your browser, the token is on your clipboard for a short while
+after walkd starts, and `npx -y sidewalk-walkd token --copy` puts it back.
+
+Your agent will say the same thing if you ask it for a walk before the panel is
+open.
 
 ## How it works
 

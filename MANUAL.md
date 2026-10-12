@@ -140,14 +140,33 @@ native messaging host and registers it with the browsers installed for your
 user. Native messaging is the one channel out of a browser extension that is not
 loopback TCP: the browser resolves a manifest from a directory only your own
 user can write, launches the program it names, and refuses every extension but
-the one that manifest lists. That is how a later panel will get the token
-without the paste.
+the one that manifest lists. That is how the panel gets the token without the
+paste.
 
-**Nothing reads it yet.** The panel's half ships in a later release through both
-stores, and the manifests have to be on disk before any panel can ask — so they
-go in now. Until then the clipboard and the gear are the whole of it, and they
-stay the fallback afterwards for a browser the host cannot reach, such as a Snap
-Chromium or a browser under an enterprise policy.
+**The panel's half: Connect.** When walkd refuses it, the pane's notice offers a
+Connect button above the command. Pressing it asks the browser for one
+permission — `nativeMessaging`, which the extension declares as optional rather
+than required, so an update could never disable the extension until somebody
+accepted it — and the browser asks you once per profile. After that the worker
+asks the host for the token itself, stores it where a paste would have gone, and
+the connection line says *Connected to walkd on 8760*. The permission request
+needs your own click (both browsers refuse it otherwise), which is why there is
+a button and not a quiet retry.
+
+The answer is taken only when it is about the daemon the pane is pointed at: one
+host serves the machine and answers about whichever walkd owns the registration,
+so a pane on another port drops what it hears rather than sending a token to a
+daemon that never issued it. The host is asked once per episode — a port change
+or a fresh refusal starts a new one — so a daemon that keeps refusing does not
+have a host process launched at it every thirty seconds.
+
+If the browser does not allow it, or the host cannot be reached at all — a Snap
+Chromium, a browser under an enterprise policy, a wrapper whose node was removed
+— the notice says so in one line and the clipboard and the gear are the way
+through, as they were. The extension also carries the Web Store public key in
+its manifest, which is what makes a Load-unpacked build report the store id the
+host's `allowed_origins` names; without it a checkout's panel is refused by the
+host with *Access to the specified native messaging host is forbidden*.
 
 **Only the daemon on this machine's own data directory registers with your
 browsers**, because the manifests name one wrapper and that wrapper names one
@@ -187,8 +206,9 @@ cannot redirect anything, since a browser there reads a registry value rather
 than a folder, so with it set the registry half is skipped outright.
 
 A pane with no token, or an old one, says *walkd on 8760 needs the token* on its
-connection line and offers `npx -y sidewalk-walkd token --copy` above the cards, with the
-gear already open at the field. It does not climb a reconnect ladder for it:
+connection line and offers two ways out above the cards — the Connect button
+first, then `npx -y sidewalk-walkd token --copy` — with the gear already open at
+the field. It does not climb a reconnect ladder for it:
 waiting changes nothing, and saving the token in the gear reconnects at once. A
 verdict clicked meanwhile is not lost. A 401 is not a refusal the queue buries,
 so the verdict goes as soon as the token lands. **Save in the gear is a check**:
@@ -799,11 +819,12 @@ else.
 **You do not have to stop your daemon to run the e2e.** It starts its own walkd
 on **8761** with a temp data dir, serves the fixture site on **9342**, and
 points the extension at that daemon through `walkd:port` (§2) before it opens a
-panel. Nothing in the suite binds 8760 or 9340, and Chrome's remote debugging is
-9341 — never 9222, which belongs to the chrome-devtools MCP. It refuses to start
+panel. One test serves a second page on **9402** to prove a walk's content scripts stop
+at the port it named. Nothing in the suite binds 8760 or 9340, and Chrome's
+remote debugging is 9341 — never 9222, which belongs to the chrome-devtools MCP. It refuses to start
 if something is already answering on 8761.
 
-Thirty-five tests, one Chromium with the extension loaded unpacked, one walk per
+Thirty-eight tests, one Chromium with the extension loaded unpacked, one walk per
 test: an item arriving over SSE and Go navigating and highlighting; the verdict
 that carries its screenshot, build id and console tail; a capture wider than the
 cap; the gear's text size across a reload; a secret's value absent from the
@@ -827,7 +848,25 @@ with its card asking to be answered again; the install note on a port that has
 never answered, with the command on the clipboard once Copy is pressed; and a
 daemon that claims another release named in the pane with the remedy, gone once
 a matching one is back; and a walk's brief under its header, surviving a reopen
-that carries none and replaced in place by one that carries a new one.
+that carries none and replaced in place by one that carries a new one; a walk
+registering its content scripts for the port it named and a page on another
+loopback port getting none; and the hands-free token — a fresh profile with
+nothing in storage asking walkd's native messaging host and being let in with
+nothing pasted, and the same profile with no host manifest on disk saying so and
+offering Connect with the command under it.
+
+The last two run a browser of their own, because what they are about is a
+profile that has never been given anything. Two things they do that nothing else
+in the suite does: they load a copy of `dist` whose manifest asks for
+`nativeMessaging` outright (Chrome's permission bubble cannot be clicked by any
+automation — not Playwright, not CDP, not `chrome://extensions`, and the
+preferences file's MAC rejects a hand-edited grant), and they copy the host
+manifest walkd's own writer produced into `<user-data-dir>/NativeMessagingHosts`,
+beside `Default/`, which is the only place a Chromium launched with
+`--user-data-dir` looks. The copy also rewrites the default port to 8761, so a
+profile with nothing in storage cannot go looking for the daemon you are using.
+The shipped `dist` keeps the permission optional; the patch is made into a temp
+directory by the test, so it cannot reach a store zip.
 
 Each test closes the walk it opened. That is tidiness now rather than a
 requirement: the worker holds one multiplexed stream however many walks are

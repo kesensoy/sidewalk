@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.1.0 — 2026-10-12 — the panel connects itself
+
+The daemon's half of the token handoff shipped in 1.0.4. This is the panel's:
+press Connect and the pane asks walkd for its own token through the browser,
+with nothing pasted and nothing printed.
+
+- **Connect, in the needs-token notice, above the command.** It asks the browser
+  for one permission — `nativeMessaging`, **optional** and not required, so no
+  update can disable the extension until somebody has accepted it — and the
+  browser asks once per profile. After that the worker asks walkd's native
+  messaging host for the token and stores it where a paste would have gone, so
+  the connection line says *Connected to walkd on 8760* by itself. The press has
+  to be the person's own: both browsers refuse a permission request outside a
+  user action. If the browser does not allow it, or the host cannot be reached —
+  a Snap Chromium, an enterprise policy, a wrapper whose node was removed — the
+  notice says so in one line and the clipboard and the gear are the way through,
+  as they were. The host is asked once per episode, where a port change or a
+  fresh refusal starts a new one, and an answer about another daemon than the one
+  the pane is on is dropped rather than sent to a daemon that never issued it.
+- **The manifest carries the Web Store public key.** A Load-unpacked build now
+  reports the store id `fiibejlikopcaplomihaegmbanhjjmed`, which is the only
+  origin the native messaging host admits — so a checkout's panel reaches the
+  host the same way a store install does. The Firefox build drops the key: its
+  identity is the gecko id, which the host's `allowed_extensions` names instead.
+- **A walk's content scripts stop at the port the walk named.** `patternOf` was
+  dropping the port on the grounds that a Chrome match pattern cannot carry one.
+  It can, and it is honoured exactly (measured on Chromium 151): a walk of an
+  app on 127.0.0.1:3000 was registering its two content scripts for every port
+  on 127.0.0.1, which meant any other app of the person's in any tab they opened
+  while the walk was open. It registers for scheme, host and port now.
+- **The privacy policy says so, in both copies.** *The panel can ask walkd for
+  its token through the browser's native messaging. Only this extension may use
+  that host, and nothing else travels that way.* And the install script, the
+  READMEs and MANUAL §2 lead with Connect and keep the paste as the fallback.
+
 ## 1.0.4 — 2026-10-12 — the token reaches the panel
 
 The plugin path was the one path that ended in a terminal step. The MCP server
