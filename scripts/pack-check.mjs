@@ -44,6 +44,8 @@ const fail = s => problems.push(s);
 // On Windows `npm` is `npm.cmd`, which Node will only run through a shell.
 const npm = (args, cwd) => execFileSync("npm", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32" });
 const readJson = f => JSON.parse(fs.readFileSync(f, "utf8"));
+/** The mode git holds for a tracked file, as a number; 0 when git does not know it. */
+const gitMode = (cwd, file) => { try { return parseInt(execFileSync("git", ["ls-files", "--stage", "--", file], { cwd, encoding: "utf8" }).split(" ")[0], 8) || 0; } catch { return 0; } };
 
 /** `npm pack --dry-run --json` is an array of one report. */
 function packReport(args, cwd) {
@@ -91,7 +93,11 @@ try {
     for (const want of files) if (!packed.has(want)) fail(`${name}: ${want} is not in the tarball`);
     if (bin) {
       const entry = packed.get(bin);
-      if (entry && !(entry.mode & 0o111)) fail(`${name}: ${bin} is not executable (mode ${entry.mode.toString(8)})`);
+      // A Windows filesystem has no executable bit, so npm reports 644 for
+      // every file there; git's index still records the mode every other
+      // checkout gets, which is the one a publish from a Mac or Linux ships.
+      const mode = entry && process.platform === "win32" ? gitMode(cwd, bin) : entry?.mode ?? 0;
+      if (entry && !(mode & 0o111)) fail(`${name}: ${bin} is not executable (mode ${mode.toString(8)})`);
       const first = fs.readFileSync(path.join(cwd, bin), "utf8").split("\n")[0];
       if (first !== "#!/usr/bin/env node") fail(`${name}: ${bin} does not start with #!/usr/bin/env node`);
     }
