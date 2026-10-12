@@ -1310,7 +1310,12 @@ test("a walk's brief sits under its header, and a reopen with a new brief replac
 test("a walk registers for the port it named, and a page on another loopback port gets nothing", async () => {
   const NEIGHBOUR = 9402;
   const neighbour = http.createServer((_req, res) => {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    // `connection: close`, and `closeAllConnections` below: a browser holds a
+    // keep-alive socket open, and `server.close()` waits for every connection
+    // it has rather than ending them — which is a test that sits there for a
+    // minute and a half after it has proved its point. (`firefox-check.mjs`
+    // learned the same thing about its witness.)
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", connection: "close" });
     res.end("<!doctype html><title>neighbour</title><p>not part of any walk</p>");
   });
   await new Promise<void>((resolve, reject) => neighbour.once("error", reject).listen(NEIGHBOUR, "127.0.0.1", resolve));
@@ -1346,6 +1351,7 @@ test("a walk registers for the port it named, and a page on another loopback por
     // Leave the tab where every other test expects to find it.
     await site.goto(`${SITE}/other.html`);
   } finally {
+    neighbour.closeAllConnections();
     await new Promise<void>(resolve => neighbour.close(() => resolve()));
   }
 });
