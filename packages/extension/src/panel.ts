@@ -332,13 +332,13 @@ function paint() {
   // The pane's own version is the manifest's. chrome.runtime.getManifest is
   // WebExtension-standard (Firefox has it), not Chrome-only.
   const mine = chrome.runtime.getManifest().version;
-  // The token notice outranks the version one: until the daemon lets the pane
-  // in, nothing it might say about versions can be acted on.
   // The notice is gone the moment the daemon lets the pane in, and so is
   // whatever the Connect button was saying: a press that worked has the
   // connection line to speak for it, and a press that did not has nothing left
   // to be about.
   if (!state.needsToken) connecting = undefined;
+  // The token notice outranks the version one: until the daemon lets the pane
+  // in, nothing it might say about versions can be acted on.
   setMarkup(document.getElementById("notice")!, state.needsToken
     ? renderTokenNotice(port, connecting)
     : state.connected && versionsDiffer(state.daemonVersion, mine) ? renderVersionNotice(mine, state.daemonVersion!, port) : "");

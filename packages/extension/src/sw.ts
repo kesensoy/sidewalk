@@ -200,9 +200,9 @@ async function checkToken(): Promise<TokenAnswer> {
  * Ask walkd's native messaging host for the token, at most once this episode.
  *
  * The answer is dropped on the floor — storing it is all it is for, and the
- * `onChanged` listener above is what reconnects on that. Synchronous on
- * purpose: the caller is a refresh the pane is waiting on, and nothing it does
- * depends on how this ends.
+ * `onChanged` listener above is what reconnects on that. It returns at once
+ * rather than being awaited: the caller is a refresh the pane is waiting on,
+ * and nothing that refresh does depends on how this ends.
  */
 function offerToken(): void {
   if (askedIn === askEpisode) return;
