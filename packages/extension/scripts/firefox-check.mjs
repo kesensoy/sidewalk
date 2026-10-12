@@ -119,7 +119,11 @@ const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-ff-"));
 const kids = [];
 const spawnKid = (cmd, args, env) => { const c = spawn(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } }); kids.push(c); return c; };
 spawnKid("node", [FIXTURE], { PORT: String(SITE) });
-spawnKid("node", [WALKD, "serve", "--port", String(DAEMON), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state")], { WALKD_TOKEN: TOKEN });
+// `WALKD_NATIVE_ROOT`: a start writes native messaging manifests into the
+// browser profiles under the home directory, and this check runs a throwaway
+// Firefox profile of its own, so they go under its data dir instead.
+spawnKid("node", [WALKD, "serve", "--port", String(DAEMON), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state")],
+  { WALKD_TOKEN: TOKEN, WALKD_NATIVE_ROOT: path.join(dataDir, "native-root") });
 
 /** Every request the add-on makes, in order. */
 const seen = [];

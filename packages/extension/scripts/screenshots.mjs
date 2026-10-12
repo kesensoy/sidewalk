@@ -86,8 +86,11 @@ kid("node", [path.join(ROOT, "demo", "site", "serve.mjs")], { PORT: String(SITE_
 // `--grace-ms 20000`: the Undo frame wants two green Undos with their drain
 // bars still visibly draining, and the default ten seconds runs out while the
 // hand is still on the next card. `--no-copy` keeps the token this fresh data
-// dir mints off the clipboard of whoever is taking the pictures.
-kid("node", [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "20000", "--no-copy"]);
+// dir mints off the clipboard of whoever is taking the pictures, and
+// `WALKD_NATIVE_ROOT` keeps the native messaging manifests a start writes out of
+// their real browser profiles.
+kid("node", [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "20000", "--no-copy"],
+  { WALKD_NATIVE_ROOT: path.join(dataDir, "native-root") });
 for (let i = 0; i < 200 && !(await healthy()); i++) await sleep(100);
 if (!(await healthy())) throw new Error(`no walkd on ${PORT}`);
 walkdToken = await readToken(dataDir);

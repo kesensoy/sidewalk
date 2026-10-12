@@ -28,7 +28,12 @@ const root = path.resolve(import.meta.dirname, "..");
 
 /** The two packages npm publishes, in publish order, with what each one owes. */
 const PUBLISHED = [
-  { dir: "packages/walkd", name: "sidewalk-walkd", bin: "bin/walkd.js", files: ["package.json", "README.md", "LICENSE", "dist/index.js", "dist/index.d.ts", "dist/schema/index.js", "dist/schema/index.d.ts", "bin/walkd.js"] },
+  // `native/host.js` is the native messaging host the browser launches, copied
+  // out of the package into the daemon's data dir at every start — so a tarball
+  // without it ships a daemon that cannot write one. `native/package.json` is
+  // the one line that settles the module kind of a .js file in a folder with no
+  // package above it, and it is copied with the host.
+  { dir: "packages/walkd", name: "sidewalk-walkd", bin: "bin/walkd.js", files: ["package.json", "README.md", "LICENSE", "dist/index.js", "dist/index.d.ts", "dist/schema/index.js", "dist/schema/index.d.ts", "bin/walkd.js", "native/host.js", "native/package.json"] },
   { dir: "packages/sidewalk-mcp", name: "sidewalk-mcp", bin: "bin/sidewalk-mcp.js", files: ["package.json", "README.md", "LICENSE", "dist/index.js", "dist/index.d.ts", "bin/sidewalk-mcp.js"] },
 ];
 /** Everything else in the workspace must say so. */

@@ -369,9 +369,12 @@ async function record(opts = {}) {
   // --- the daemon, with the real grace window so the green Undo is real.
   // `--no-copy`: it mints a token in a fresh data dir and would otherwise put it
   // on the clipboard, which a recording must not take from whoever is recording.
+  // `WALKD_NATIVE_ROOT`: a start also writes native messaging manifests into the
+  // browser profiles under the home directory, and a recording has no business
+  // editing them either, so they go under this run's own data dir.
   if (await healthy()) throw new Error(`port ${PORT} busy — something is already serving walkd there`);
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-record-"));
-  const daemon = spawn(process.execPath, [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", String(GRACE_MS), "--no-copy"], { stdio: "inherit" });
+  const daemon = spawn(process.execPath, [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", String(GRACE_MS), "--no-copy"], { stdio: "inherit", env: { ...process.env, WALKD_NATIVE_ROOT: path.join(dataDir, "native-root") } });
   await until(`walkd on ${PORT}`, healthy);
   // This daemon's own token, out of the data dir it was told to use: it refuses
   // every route but /health without it, and the launcher, the pane and the

@@ -42,7 +42,12 @@ async function startDaemon(env: Record<string, string> = {}) {
   // WALKD_ADVERTISE_VERSION, which nothing outside this suite ever sets.
   // `--no-copy`: a daemon that mints a token puts it on the clipboard, and a
   // test run must never clobber the person's.
-  const child = spawn(process.execPath, [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "0", "--no-copy"], { stdio: "inherit", env: { ...process.env, ...env } });
+  // `WALKD_NATIVE_ROOT`: a daemon start also writes native messaging manifests
+  // into the browser profiles under the home directory, and this suite's
+  // browser is a throwaway profile Playwright made. So the manifests go under
+  // this run's own data directory, where nothing reads them and the run takes
+  // them away with it.
+  const child = spawn(process.execPath, [WALKD, "serve", "--port", String(PORT), "--data-dir", dataDir, "--state-dir", path.join(dataDir, "state"), "--grace-ms", "0", "--no-copy"], { stdio: "inherit", env: { ...process.env, WALKD_NATIVE_ROOT: path.join(dataDir, "native-root"), ...env } });
   await waitFor("answered /health", true);
   // The token is written before the daemon listens, so it is there now. The pane
   // is told as soon as there is a browser to tell: a restart leaves it holding

@@ -15,7 +15,7 @@
     "./schema": { "types": "./dist/schema/index.d.ts", "default": "./dist/schema/index.js" },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "bin", "README.md", "LICENSE"],
+  "files": ["dist", "bin", "native", "README.md", "LICENSE"],
   "engines": { "node": ">=22" },
   "publishConfig": { "access": "public" },
   "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "npm run build" },

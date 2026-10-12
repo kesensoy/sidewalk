@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { GECKO_ID, SHIM, STRICT_MIN_VERSION, patchManifest } from "./firefox-manifest.mjs";
+import { CHROME_ORIGINS, FIREFOX_EXTENSIONS } from "sidewalk-walkd";
 
 /**
  * The real manifest, not a fixture: every assertion below is about what
@@ -66,5 +67,33 @@ describe("patchManifest", () => {
       if (touched.includes(k)) continue;
       expect([k, after[k]]).toEqual([k, before[k]]);
     }
+  });
+});
+
+/**
+ * The native messaging host walkd writes names exactly one extension per
+ * browser family, and the browser is what enforces it: an id that does not
+ * match is refused with "Access to the specified native messaging host is
+ * forbidden" and no second chance. So the two halves have to agree, and this is
+ * the only file that can see both.
+ *
+ * The panel's own half of native messaging arrives in a later release; the
+ * manifests walkd writes are already pointing at these ids.
+ */
+describe("the ids walkd writes into the native messaging manifests", () => {
+  it("names this add-on's gecko id for Firefox", () => {
+    expect(FIREFOX_EXTENSIONS).toEqual([GECKO_ID]);
+  });
+
+  it("names the Chrome Web Store id this extension is listed under", () => {
+    // The store id is not in the manifest — Chrome assigns it — so the README's
+    // own store link is what it is checked against.
+    const readme = readFileSync(path.join(import.meta.dirname, "..", "..", "..", "README.md"), "utf8");
+    expect(CHROME_ORIGINS).toHaveLength(1);
+    const id = CHROME_ORIGINS[0].replace("chrome-extension://", "").replace("/", "");
+    expect(id).toMatch(/^[a-p]{32}$/);
+    expect(readme).toContain(`chromewebstore.google.com/detail/sidewalk/${id}`);
+    // The trailing slash is part of the format, not decoration.
+    expect(CHROME_ORIGINS[0].endsWith("/")).toBe(true);
   });
 });
