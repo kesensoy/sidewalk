@@ -26,7 +26,7 @@ jobs:
       # named for one release and tagged as another.
       - name: The tag matches the version
         run: |
-          VERSION="$(node -p "require('./.claude-plugin/plugin.json').version")"
+          VERSION="$(node -p "require('./plugin/.claude-plugin/plugin.json').version")"
           if [ "v$VERSION" != "$TAG" ]; then
             echo "tag $TAG, tree version $VERSION" >&2
             exit 1
