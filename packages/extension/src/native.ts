@@ -59,9 +59,13 @@ export const NATIVE_PERMISSION = "nativeMessaging";
 export const ASK_TIMEOUT_MS = 5_000;
 
 /**
- * Why no token came back. All of them end in the same sentence on the pane —
- * the token is pasted instead — and the one that is worth telling the two
- * halves apart is `wrongPort`, which is this pane protecting itself (below).
+ * Why no token came back.
+ *
+ * The browser's own refusals all end in the same sentence on the pane — the
+ * token is pasted instead — and the console is where the word itself goes. The
+ * last three are not the browser's at all: they are `adopt` (below) dropping an
+ * answer the pane cannot use, and `refusedToken` is the one of those the person
+ * is told about, because the way out of it is a walkd restart.
  */
 export type AskReason =
   | "noApi"        // the permission is not held: there is no function to call
@@ -71,6 +75,10 @@ export type AskReason =
   | "timeout"      // it never answered
   | "hostRefused"  // it answered, and said why it had nothing to give
   | "wrongPort"    // it answered about another daemon than the one we are on
+  // The three below are `adopt`'s, not the browser's: a good answer that is
+  // still the wrong one to store.
+  | "refusedToken" // what it gave is the token this daemon is already refusing
+  | "superseded"   // the pane is in with a token of its own now
   | "unknown";     // an answer, or an error, in a shape nothing here knows
 
 export type Asked = { ok: true; port: number; token: string } | { ok: false; reason: AskReason; said?: string };
@@ -78,11 +86,13 @@ export type Asked = { ok: true; port: number; token: string } | { ok: false; rea
 /**
  * The browser's own words, as one of the reasons above.
  *
- * Substrings rather than whole sentences: the three Chromium strings were read
- * off 151 and Firefox words the same failures differently ("No such native
- * application …"), so matching the distinctive part is what keeps both
- * browsers landing on the same reason. Anything unrecognised is `unknown`,
- * which shows the person exactly what the three known ones show them.
+ * Substrings rather than whole sentences, because the two browsers do not say
+ * the same words. On Firefox a host that is not on disk and a host whose
+ * manifest does not list this add-on both throw `No such native application
+ * sh.sidewalk.walkd` — "forbidden" has no separate wording there, so it
+ * collapses into `noHost`. It costs nothing: the pane says one line for every
+ * reason here, and only the console sees which. Anything unrecognised is
+ * `unknown`, which the person is shown exactly as the known ones are.
  */
 export function reasonOf(said: string | undefined): AskReason {
   const s = (said ?? "").toLowerCase();
@@ -161,4 +171,40 @@ export async function askHost(port: number, timeoutMs = ASK_TIMEOUT_MS): Promise
   const answered = r.port as number;
   if (answered !== port) return { ok: false, reason: "wrongPort", said: `the host answered about walkd on ${answered}` };
   return { ok: true, port: answered, token };
+}
+
+/** What the pane holds at the moment an answer comes back. */
+export type PaneNow = { port: number; token: string; needsToken: boolean };
+
+/**
+ * May this answer be stored? Three ways a good answer is still the wrong one.
+ *
+ * The ask is not instant — a host is a process the browser launches — so the
+ * pane can have moved on by the time it answers, and the worker is the only
+ * half that knows what it holds now. Kept here, apart from the worker, because
+ * each of the three is a case that cost somebody a bad afternoon rather than a
+ * rule anybody would guess:
+ *
+ * 1. **The pane moved to another daemon while the host was answering.** The
+ *    token is kept under one key for the whole profile (`port.ts` says why), so
+ *    storing it would hand the new daemon the old one's token.
+ * 2. **A paste won the race.** Somebody put a working token in the gear while
+ *    the host was being asked; overwriting it would take a connected pane out
+ *    again. Only while the daemon is not refusing what they pasted — if it is,
+ *    the host's answer is exactly what is wanted.
+ * 3. **The host's token is the one the daemon is already refusing.** This is
+ *    `walkd token --rotate` under a running daemon: the daemon keeps serving
+ *    the token it has in memory and the host reads the new one off disk, so the
+ *    host hands over a token that daemon will never accept. Storing it again is
+ *    not merely useless — Chromium writes no `onChanged` for a value that has
+ *    not changed, so nothing would retarget, nothing would settle, and the next
+ *    refusal would ask the host all over again. Ending the episode here is what
+ *    makes it stop, and the pane says so: restart walkd and press Connect.
+ */
+export function adopt(answer: Asked, now: PaneNow): Asked {
+  if (!answer.ok) return answer;
+  if (answer.port !== now.port) return { ok: false, reason: "wrongPort", said: "the pane moved to another port while the host was answering" };
+  if (now.token && now.token !== answer.token && !now.needsToken) return { ok: false, reason: "superseded", said: "the pane is in with a token of its own" };
+  if (now.token === answer.token) return { ok: false, reason: "refusedToken", said: "the host's token is the one already refused" };
+  return answer;
 }

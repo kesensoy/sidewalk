@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, INSTALL_COMMAND, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
+import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 
 const look = (id: string, seq: number, group?: string): Item => ({ id, seq, group, kind: "look", owner: "g", title: `T${id}`, url: "http://x/", do: "do", see: "see", pass: "pass", expect: [], addedAt: "2026-09-16T00:00:00Z" });
@@ -1092,13 +1092,24 @@ describe("first run and version notice", () => {
     expect(failed).toContain("walkd did not answer through the browser. Paste the token instead.");
     expect(failed).toContain('class="said issue"');
 
+    // The one end a paste cannot help: the host handed over a token this daemon
+    // is already refusing — a rotate under a running daemon — so the line asks
+    // for the restart that settles it instead.
+    const stale = renderTokenNotice(8761, "stale");
+    expect(stale).toContain("walkd refused the token the host handed over. Restart walkd, then press Connect again.");
+    expect(stale).toContain('class="said issue"');
+    expect(stale).not.toContain("Paste the token instead.");
+
     expect(connectSay(undefined)).toBeNull();
     expect(connectSay("asking")).toEqual({ text: CONNECT_ASKING, cls: "" });
     expect(connectSay("refused")).toEqual({ text: CONNECT_REFUSED, cls: "issue" });
     expect(connectSay("failed")).toEqual({ text: CONNECT_FAILED, cls: "issue" });
-    // The two failures say what to do next, and neither of them says "secure"
-    // or blames the person.
+    expect(connectSay("stale")).toEqual({ text: CONNECT_STALE, cls: "issue" });
+    // Every one of them says what to do next, and none says "secure" or blames
+    // the person.
     for (const line of [CONNECT_REFUSED, CONNECT_FAILED]) expect(line).toContain("Paste the token instead.");
+    expect(CONNECT_STALE).toContain("Restart walkd");
+    for (const line of [CONNECT_ASKING, CONNECT_REFUSED, CONNECT_FAILED, CONNECT_STALE]) expect(line).not.toMatch(/secure/i);
   });
 
   it("the connection line for a daemon that is answering and refusing says what it wants", () => {

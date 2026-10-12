@@ -48,16 +48,30 @@ export type TokenCheck = "checking" | "connected" | "refused" | "noDaemon" | "no
 export type TokenAnswer = { check: Extract<TokenCheck, "connected" | "refused" | "noDaemon">; port: number };
 
 /**
- * What came of pressing Connect.
+ * What came of pressing Connect, as the worker saw it end.
  *
  * The permission is the pane's half — it needs the person's own click, and only
  * a page can carry one — and the ask is the worker's, so that the token is
- * stored by one code path and no other. `ok` means the token is in storage and
- * the connection line is about to say so by itself; `reason` is one of
- * `native.ts`'s, for the console. The pane says the same sentence for every
- * reason: walkd did not answer through the browser, so paste it instead.
+ * stored by one code path and no other. What comes back is the **daemon's
+ * verdict**, not the fact that a token reached storage: a stored token is not a
+ * working one, which is the lesson the gear's Save already learned.
+ *
+ * - `connected`: walkd let the pane in. The connection line says so and the
+ *   notice is gone, so the pane says nothing of its own.
+ * - `refusedToken`: the host answered and walkd refused what it gave. This is a
+ *   `walkd token --rotate` under a running daemon, and the way out is a restart,
+ *   so it is the one end with a line of its own.
+ * - `noHost`: nothing usable came back through the browser. One line for every
+ *   reason behind it, because four of the likeliest report the same sentence.
+ * - `nothingToSay`: the press changed nothing worth a line — the pane was
+ *   already in on a token of its own, or nothing is answering on the port at
+ *   all, and the connection line is the whole story either way.
+ *
+ * `reason` is `native.ts`'s own word, plus whatever the browser or the host
+ * said, for the console and nowhere else.
  */
-export type ConnectAnswer = { ok: true; port: number } | { ok: false; reason: string };
+export type ConnectEnd = "connected" | "refusedToken" | "noHost" | "nothingToSay";
+export type ConnectAnswer = { end: ConnectEnd; port: number; reason?: string };
 
 export type SwToPanel =
   | { t: "sw:state"; state: SwState };                         // full state on hello and on change

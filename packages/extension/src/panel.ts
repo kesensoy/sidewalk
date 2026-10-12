@@ -285,17 +285,16 @@ async function pressConnect(asking: Promise<boolean>) {
   try { granted = (await asking) === true; } catch { granted = false; }
   if (!granted) { connecting = "refused"; paint(); return; }
   const answer = await send<ConnectAnswer | undefined>({ t: "panel:connect" }).catch(() => undefined);
-  if (answer?.ok) {
-    // Nothing to say here: the token is in storage, the worker is already
-    // retargeting on it, and the connection line is what says so.
-    connecting = undefined;
-    paint();
-    return;
-  }
-  // The four likeliest mistakes all report the same sentence to the browser, so
-  // the pane says one line and the reason goes here for whoever is looking.
-  console.warn(`sidewalk: walkd did not answer through the browser (${answer?.reason ?? "no answer from the worker"})`);
-  connecting = "failed";
+  // The reason never reaches the pane: four of the likeliest mistakes report
+  // the same sentence to the browser, so there is one line per end and the word
+  // behind it goes here for whoever is looking.
+  if (answer?.reason) console.warn(`sidewalk: Connect ended in ${answer.end} (${answer.reason})`);
+  // `connected` and `nothingToSay` leave the connection line to speak for
+  // itself — in the first it has just turned green, and in the second nothing
+  // the press did is worth a line. A worker that never answered is the same
+  // dead end as a host that did not.
+  connecting = !answer ? "failed" : answer.end === "refusedToken" ? "stale" : answer.end === "noHost" ? "failed" : undefined;
+  if (!answer) console.warn("sidewalk: the worker did not answer the Connect press");
   paint();
 }
 

@@ -366,17 +366,28 @@ export const CONNECT_LABEL = "Connect";
 export const CONNECT_ASKING = "Asking walkd…";
 export const CONNECT_REFUSED = "The browser did not allow it. Paste the token instead.";
 export const CONNECT_FAILED = "walkd did not answer through the browser. Paste the token instead.";
+/**
+ * The host answered, and walkd refused what it gave.
+ *
+ * `walkd token --rotate` under a running daemon: the daemon keeps serving the
+ * token it has in memory while the host reads the new one off disk, so the two
+ * halves disagree and no amount of asking will settle it. The way out is a
+ * restart, so that is what the line says — the paste would not help here, since
+ * what is on the clipboard is the same new token the host just handed over.
+ */
+export const CONNECT_STALE = "walkd refused the token the host handed over. Restart walkd, then press Connect again.";
 /** What the pane is in the middle of, kept by the panel so a repaint does not lose it. */
-export type Connecting = "asking" | "refused" | "failed";
+export type Connecting = "asking" | "refused" | "failed" | "stale";
 
 export function connectSay(state: Connecting | undefined): { text: string; cls: "" | "issue" } | null {
   switch (state) {
     case "asking": return { text: CONNECT_ASKING, cls: "" };
-    // Neither of these is a fault of the person's, and neither is a dead end —
-    // the next line in the notice is the way through — so they are said in the
-    // issue colour and not in red type the pane keeps for a verdict.
+    // None of these is a fault of the person's, and none is a dead end — the
+    // way through is the next line in the notice, or a restart — so they are
+    // said in the issue colour and not in red type the pane keeps for a verdict.
     case "refused": return { text: CONNECT_REFUSED, cls: "issue" };
     case "failed": return { text: CONNECT_FAILED, cls: "issue" };
+    case "stale": return { text: CONNECT_STALE, cls: "issue" };
     default: return null;
   }
 }

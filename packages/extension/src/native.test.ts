@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ASK, ASK_TIMEOUT_MS, HOST_NAME, NATIVE_PERMISSION, askHost, hasNativePermission, reasonOf } from "./native.js";
+import { ASK, ASK_TIMEOUT_MS, HOST_NAME, NATIVE_PERMISSION, adopt, askHost, hasNativePermission, reasonOf, type Asked } from "./native.js";
 
 /**
  * The host is a program the browser launches, so there is nothing of it to run
@@ -117,20 +117,70 @@ describe("askHost", () => {
 });
 
 /**
- * The three Chromium 151 sentences, verbatim, and Firefox's own words for two
- * of the same failures. Four causes collapse into the first string — no
- * manifest, a `path` that is not there, a relative `path`, a name nobody
- * registered — so nothing can tell them apart, and the pane says one line for
- * every reason here.
+ * The three Chromium 151 sentences, verbatim, and Firefox's own wording. Four
+ * causes collapse into the first string — no manifest, a `path` that is not
+ * there, a relative `path`, a name nobody registered — so nothing can tell them
+ * apart, and the pane says one line for every reason here.
  */
 describe("reasonOf", () => {
   it("knows the sentences a browser says", () => {
     expect(reasonOf("Specified native messaging host not found.")).toBe("noHost");
     expect(reasonOf("Access to the specified native messaging host is forbidden.")).toBe("forbidden");
     expect(reasonOf("Native host has exited.")).toBe("hostExited");
-    // Firefox words the same two failures differently.
+    // Firefox has no separate wording for a host that will not take this
+    // add-on: a host that is not on disk and a host whose manifest does not
+    // list it both say this, so `forbidden` collapses into `noHost` there.
     expect(reasonOf("No such native application sh.sidewalk.walkd")).toBe("noHost");
     expect(reasonOf("An unexpected error occurred")).toBe("unknown");
     expect(reasonOf(undefined)).toBe("unknown");
+  });
+});
+
+/**
+ * The host is a process the browser launches, so an answer arrives after a
+ * gap — and the pane can have moved in it. These are the three ways a good
+ * answer is still the wrong one to store, each of them a case the pane got
+ * wrong before review caught it.
+ */
+describe("adopt", () => {
+  const good: Asked = { ok: true, port: 8761, token: "the-hosts-token" };
+  const now = (over: Partial<{ port: number; token: string; needsToken: boolean }> = {}) =>
+    ({ port: 8761, token: "", needsToken: false, ...over });
+
+  it("takes an answer about the daemon the pane is on", () => {
+    expect(adopt(good, now())).toBe(good);
+    // A pane being refused is the case this whole path exists for.
+    expect(adopt(good, now({ token: "the-old-one", needsToken: true }))).toBe(good);
+  });
+
+  it("hands a failure straight back", () => {
+    const failed: Asked = { ok: false, reason: "noHost" };
+    expect(adopt(failed, now())).toBe(failed);
+  });
+
+  it("drops an answer for a daemon the pane has left while the host was answering", () => {
+    const r = adopt(good, now({ port: 8765 }));
+    expect(r).toEqual({ ok: false, reason: "wrongPort", said: "the pane moved to another port while the host was answering" });
+  });
+
+  it("never overwrites a token that is working: a paste can win the race", () => {
+    const r = adopt(good, now({ token: "pasted-and-accepted" }));
+    expect(r).toEqual({ ok: false, reason: "superseded", said: "the pane is in with a token of its own" });
+    // Unless the daemon is refusing what they pasted, in which case the host's
+    // answer is the whole point.
+    expect(adopt(good, now({ token: "pasted-and-refused", needsToken: true }))).toBe(good);
+  });
+
+  /**
+   * `walkd token --rotate` under a running daemon: the daemon keeps serving the
+   * token in its memory and the host reads the new one off disk, so the host
+   * hands over a token that daemon will never accept. Storing it a second time
+   * writes an unchanged value, Chromium reports no `onChanged` for that,
+   * nothing retargets — and the next refusal asks the host again. This is what
+   * ends that.
+   */
+  it("ends the episode when the host's token is the one already refused", () => {
+    const r = adopt(good, now({ token: good.token, needsToken: true }));
+    expect(r).toEqual({ ok: false, reason: "refusedToken", said: "the host's token is the one already refused" });
   });
 });

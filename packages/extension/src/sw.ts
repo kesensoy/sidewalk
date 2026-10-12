@@ -12,7 +12,7 @@ import { replayLate } from "./late.js";
 import { unseenCount } from "./replies.js";
 import { DEFAULT_PORT, PORT_KEY, TOKEN_KEY, connectedKey, daemonBase, parsePort, parseToken } from "./port.js";
 import { UI_KEY, shotsOf } from "./settings.js";
-import { type Asked, askHost, hasNativePermission } from "./native.js";
+import { type Asked, adopt, askHost, hasNativePermission } from "./native.js";
 import { type ConnectAnswer, type ConsoleEntry, type GoResult, type PanelToSw, type SwState, type SwToContent, type TokenAnswer, type WalkView } from "./protocol.js";
 
 const link = new DaemonLink(daemonBase(DEFAULT_PORT));
@@ -222,7 +222,12 @@ function offerToken(): void {
 async function takeToken(): Promise<Asked> {
   if (!(await hasNativePermission())) return { ok: false, reason: "noApi" };
   const port = currentPort;
-  const r = await askHost(port);
+  const answer = await askHost(port);
+  // What the pane holds *now*, read after the ask and not before it: the host is
+  // a process the browser launches, so the pane can have moved to another daemon
+  // or been handed a working token by a paste while it was answering. `adopt`
+  // says which of those drops the answer, and why.
+  const r = adopt(answer, { port: currentPort, token: currentToken, needsToken });
   if (!r.ok) {
     console.warn(`walkd: no token through the browser (${r.reason}${r.said ? `: ${r.said}` : ""}). The gear still takes a pasted one.`);
     return r;
@@ -243,6 +248,14 @@ async function takeToken(): Promise<Asked> {
 /**
  * The person pressed Connect, and the browser has just let this extension talk
  * to the host. Ask now, whatever this episode has already tried.
+ *
+ * The answer is the daemon's verdict and not the storage write. Storing a token
+ * is not evidence that it works — which is the lesson the gear's Save already
+ * learned ("i had copied something else and noticed when i saved my wrong token
+ * it just says saved in green") — so this takes the same path Save takes and
+ * waits for what walkd makes of it. A rotate under a running daemon is exactly
+ * the case: the host hands over a token that daemon will never accept, and the
+ * pane has to say so rather than fall quiet.
  */
 async function connectNow(): Promise<ConnectAnswer> {
   // A press is its own episode, and it consumes it: the automatic path must not
@@ -259,7 +272,24 @@ async function connectNow(): Promise<ConnectAnswer> {
     await sleep(250);
     r = await takeToken();
   }
-  return r.ok ? { ok: true, port: r.port } : { ok: false, reason: r.reason };
+  const port = currentPort || DEFAULT_PORT;
+  if (!r.ok) {
+    const reason = `${r.reason}${r.said ? `: ${r.said}` : ""}`;
+    // `refusedToken` is the host answering with a token this daemon is already
+    // refusing: the pane says that in its own line, because the way out is a
+    // walkd restart and not a paste. `superseded` is the pane already being in
+    // on a token of its own, where the connection line is the whole story.
+    if (r.reason === "refusedToken") return { end: "refusedToken", port, reason };
+    if (r.reason === "superseded") return { end: "nothingToSay", port, reason };
+    return { end: "noHost", port, reason };
+  }
+  const t = await checkToken();
+  if (t.check === "connected") return { end: "connected", port: t.port };
+  // Refused: the token reached storage, the daemon was asked, and it said no.
+  if (t.check === "refused") return { end: "refusedToken", port: t.port, reason: "walkd refused the token the host handed over" };
+  // Nothing is answering on the port any more. The connection line says so
+  // without help, and the token is stored for when something does.
+  return { end: "nothingToSay", port: t.port, reason: "no daemon answered on the port" };
 }
 
 // `latest`, not `inflight`: the pane says hello the moment it opens and then
