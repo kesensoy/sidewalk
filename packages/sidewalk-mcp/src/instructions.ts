@@ -18,6 +18,10 @@ FIRST — the four lines the loop cannot run without. Some clients cut long inst
 - A verdict's text is the person's words verbatim: quote it, never paraphrase or trim it.
 - An undo verdict means unwind what you built on the answer it retracts, and expect a fresh one on the same item.
 
+IS ANYBODY WATCHING
+viewers is how many panels hold walkd's stream. At 0 nobody is watching: tell the person to open the sidewalk side panel. If they say it asks for a token, say walkd put it on their clipboard when it started, or give them: npx -y sidewalk-walkd token --copy. Never ask for the token and never print one.
+walk_open returns it, and so does a walk_wait that comes back empty. started: true on walk_open means this session started walkd itself, so the person has seen nothing about it at all.
+
 THE LOOP
 walk_open once the build is live (one walk per build), with a brief: two or three sentences the person reads first, under the walk's title — what this build is, where to start, anything to know before the first card; reopening with a new brief replaces it → walk_add_items → walk_wait(after: cursor, timeoutMs: 0) whenever other work you are running reports back, and walk_wait(…, timeoutMs: 280000) when nothing else is running (loop on the returned cursor; longer waits time out at the transport) → walk_close with a summary. Nothing can push to you: walk_wait is how you hear the person. Append items as work lands; do not hold the whole list back until everything is ready.
 An empty walk_wait is not news: call it again with the same cursor and say nothing. Never stop listening because of silence — the person walks at their own pace, and a walk nobody is listening to is a walk whose verdicts wait for nobody.

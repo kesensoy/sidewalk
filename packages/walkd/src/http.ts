@@ -117,6 +117,20 @@ export function createHttpServer(store: WalkStore, opts: { version?: string; gra
   const graceMs = opts.graceMs ?? store.graceMs;
   const auth = opts.auth;
   const startedAt = opts.startedAt ?? new Date().toISOString();
+  /**
+   * How many panels are watching, counted as open `/events` streams.
+   *
+   * `/events` is the pane's stream and nothing else's: it is the multiplexed one
+   * the extension holds exactly one of for as long as the daemon answers, and a
+   * client reaching it has already cleared `refuse` and presented the token. So
+   * the count answers the one question an agent cannot otherwise ask — is
+   * anybody actually looking at the cards I am writing? — and `walk_open`
+   * returning 0 is what tells the agent to say "open the side panel".
+   *
+   * A box, not a number, because `sse` is a module-level function and the count
+   * belongs to this server.
+   */
+  const viewers = { n: 0 };
   return http.createServer(async (req, res) => {
     try {
       // Before the route, and before the body: every route, the two streams
@@ -128,7 +142,7 @@ export function createHttpServer(store: WalkStore, opts: { version?: string; gra
       const m = req.method ?? "GET";
       // `pid` and `startedAt` say which process this is, so a client holding a
       // state file can tell this daemon from whatever else may hold the port.
-      if (m === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, version, graceMs, auth: auth ? "token" : "none", pid: process.pid, startedAt });
+      if (m === "GET" && url.pathname === "/health") return json(res, 200, { ok: true, version, graceMs, auth: auth ? "token" : "none", pid: process.pid, startedAt, viewers: viewers.n });
       // After /health and before the route: a caller with no token learns
       // nothing a stranger should not know, not even which walks exist or
       // whether a path is one of this daemon's.
@@ -138,7 +152,7 @@ export function createHttpServer(store: WalkStore, opts: { version?: string; gra
       // connections, so a client taking one stream per walk spends them all on
       // streams past the sixth walk and its own health checks, reads and posts
       // queue behind them. Nothing here is per walk, so nothing 404s.
-      if (m === "GET" && url.pathname === "/events") return await sse(req, res, store);
+      if (m === "GET" && url.pathname === "/events") return await sse(req, res, store, undefined, viewers);
       if (parts[0] !== "walks") return json(res, 404, { error: "not found" });
       if (parts.length === 1) {
         if (m === "GET") return json(res, 200, await store.list());
@@ -203,8 +217,13 @@ function body(req: http.IncomingMessage): Promise<any> {
  * has to say which walk it is about, and `data` is `{walk, data}`. The
  * multiplexed stream also carries `open` — a walk this client has never heard
  * of — which is the whole reason it does not need a walk id to subscribe.
+ *
+ * `viewers` is the server's count of open multiplexed streams, raised here and
+ * lowered on close. It is passed only for `/events`, because only the pane
+ * holds one of those, and `/health` reports it so an agent can be told whether
+ * anybody is watching.
  */
-async function sse(req: http.IncomingMessage, res: http.ServerResponse, store: WalkStore, walkId?: string) {
+async function sse(req: http.IncomingMessage, res: http.ServerResponse, store: WalkStore, walkId?: string, viewers?: { n: number }) {
   if (walkId !== undefined) await store.get(walkId);
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
   const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -218,5 +237,13 @@ async function sse(req: http.IncomingMessage, res: http.ServerResponse, store: W
   for (const [ev, h] of Object.entries(hs)) store.on(ev, h);
   const ping = setInterval(() => send("ping", Date.now()), 15000);
   send("ping", Date.now());
-  req.on("close", () => { clearInterval(ping); for (const [ev, h] of Object.entries(hs)) store.off(ev, h); });
+  if (viewers) viewers.n++;
+  // One decrement per stream, whatever closed it: `close` fires on a pane that
+  // navigated away, a browser that was quit, and a daemon shutting the socket.
+  let counted = viewers !== undefined;
+  req.on("close", () => {
+    clearInterval(ping);
+    if (viewers && counted) { viewers.n--; counted = false; }
+    for (const [ev, h] of Object.entries(hs)) store.off(ev, h);
+  });
 }

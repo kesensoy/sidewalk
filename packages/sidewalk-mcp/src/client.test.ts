@@ -36,14 +36,22 @@ describe("DaemonClient", () => {
   });
 
   /**
-   * The daemon this process starts is started behind the person's back, with its
-   * output thrown away, so it must not take their clipboard: a token it minted
-   * would land there with no line anywhere saying so. `--no-copy` is not
-   * optional on this path. The stub stands in for the daemon and writes the
-   * state file an actual one would, pointing at the server this suite is already
-   * running.
+   * The daemon this process starts is the only one a person never sees start.
+   * It comes up behind their back, with its output thrown away, and before this
+   * release it was told `--no-copy` — so the token it minted landed in a file
+   * and nowhere a person could reach, and the plugin path was the one path that
+   * ended in a terminal step.
+   *
+   * So the flag is gone, and the daemon puts its token where the paste comes
+   * from. The silence that argued for `--no-copy` is answered instead: walkd
+   * arms a timer that clears the clipboard again, and the agent is told to say
+   * where the token went (`started` and `viewers`, below and in
+   * `instructions.ts`).
+   *
+   * The stub stands in for the daemon and writes the state file an actual one
+   * would, pointing at the server this suite is already running.
    */
-  it("connect() starts a daemon with --no-copy, so nothing takes the clipboard unasked", async () => {
+  it("connect() starts a daemon that copies its token, and says it started one", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-autostart-"));
     const data = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-autostart-data-"));
     await writeToken(data, "a-token-the-stub-daemon-serves");
@@ -59,13 +67,45 @@ describe("DaemonClient", () => {
     const started = await DaemonClient.connect({ stateDir, spawn: fake });
     expect(started).toBeInstanceOf(DaemonClient);
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual([expect.stringContaining("walkd.js"), "serve", "--state-dir", stateDir, "--no-copy"]);
-    // And it is still the detached, output-thrown-away child it always was —
-    // which is the whole reason the clipboard write would have been silent.
+    expect(calls[0].args).toEqual([expect.stringContaining("walkd.js"), "serve", "--state-dir", stateDir]);
+    expect(calls[0].args).not.toContain("--no-copy");
+    // And it is still the detached, output-thrown-away child it always was,
+    // which is exactly why the agent has to be the one who says what happened.
     expect(calls[0].detached).toBe(true);
     expect(calls[0].stdio).toBe("ignore");
+    expect(started.started).toBe(true);
     await fs.rm(stateDir, { recursive: true, force: true });
     await fs.rm(data, { recursive: true, force: true });
+  });
+
+  it("says it started nothing when a daemon was already answering", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-nostart-"));
+    await fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({
+      port: (server.address() as AddressInfo).port, pid: process.pid, dataDir, startedAt: new Date().toISOString() }));
+    await writeToken(dataDir, "a-token-the-running-daemon-serves");
+    const found = await DaemonClient.connect({ stateDir, autoStart: false });
+    expect(found.started).toBe(false);
+    await fs.rm(stateDir, { recursive: true, force: true });
+  });
+
+  /**
+   * The count an agent is told so it can say "open the side panel": open
+   * `/events` streams, which only a pane holds. Undefined, never an error, from
+   * a daemon too old to count them.
+   */
+  it("reads the viewer count off /health, and answers undefined when there is none", async () => {
+    expect(await client.viewers()).toBe(0);
+    const stream = await fetch(`${base}/events`);
+    try {
+      for (let i = 0; i < 100 && await client.viewers() === 0; i++) await new Promise(r => setTimeout(r, 10));
+      expect(await client.viewers()).toBe(1);
+    } finally { await stream.body?.cancel(); }
+    for (let i = 0; i < 100 && await client.viewers() !== 0; i++) await new Promise(r => setTimeout(r, 10));
+    expect(await client.viewers()).toBe(0);
+
+    // Nothing answering at all is undefined too, not a throw: the tool call
+    // after this one says so itself.
+    expect(await new DaemonClient("http://127.0.0.1:1", dataDir).viewers()).toBeUndefined();
   });
 });
 

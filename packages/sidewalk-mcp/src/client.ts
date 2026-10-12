@@ -18,6 +18,17 @@ export class DaemonClient {
   constructor(private baseUrl: string, private dataDir: string = defaultDataDir(), private token?: string) {}
 
   /**
+   * True when this process is the one that started the daemon answering now.
+   *
+   * It is the one fact the agent can be told that nobody else can tell it: on
+   * the plugin path the daemon comes up behind the person's back, with its
+   * output thrown away, so a first `walk_open` saying `started: true` beside
+   * `viewers: 0` is the agent's cue to say what just happened and where the
+   * token went.
+   */
+  started = false;
+
+  /**
    * `opts.spawn` is the seam the test uses instead of starting a real daemon;
    * nothing in the product passes it.
    */
@@ -26,15 +37,21 @@ export class DaemonClient {
     const healthy = async () => { const s = await readState(stateDir); if (!s) return null;
       try { const h = await (await fetch(`http://127.0.0.1:${s.port}/health`)).json(); return h.ok ? s : null; } catch { return null; } };
     let s = await healthy();
+    let started = false;
     if (!s && opts.autoStart !== false) {
       const bin = path.join(path.dirname(createRequire(import.meta.url).resolve("sidewalk-walkd/package.json")), "bin", "walkd.js");
-      // `--no-copy`, always: this daemon is started behind the person's back,
-      // with `stdio: "ignore"`, so a token it mints must not take their
-      // clipboard when nothing anywhere could say that it did. The pane's own
-      // needs-token notice offers `npx -y sidewalk-walkd token --copy`, which reaches the
-      // same clipboard with the person asking for it.
-      const child = (opts.spawn ?? spawn)(process.execPath, [bin, "serve", "--state-dir", stateDir, "--no-copy"], { detached: true, stdio: "ignore" });
+      // No `--no-copy` here, and that is the point of this release. This daemon
+      // is started behind the person's back, with `stdio: "ignore"`, so the
+      // token it mints used to land in a file and nowhere a person could see —
+      // and the plugin path, the one strangers arrive on, was the only path
+      // that ended in a terminal step. Letting the copy happen puts the token
+      // where the paste comes from, and the silence the old comment worried
+      // about is answered twice over: walkd arms a timer that clears the
+      // clipboard again, and the agent is told to say where the token went
+      // (see `instructions.ts`, and `started` below).
+      const child = (opts.spawn ?? spawn)(process.execPath, [bin, "serve", "--state-dir", stateDir], { detached: true, stdio: "ignore" });
       child.unref();
+      started = true;
       for (let i = 0; i < 50 && !s; i++) { await new Promise(r => setTimeout(r, 100)); s = await healthy(); }
     }
     if (!s) throw new Error("walkd is not running and could not be started (run `walkd serve`)");
@@ -47,7 +64,25 @@ export class DaemonClient {
     // the only thing the person can act on, and a client with no token would
     // 401 on its first tool call with no explanation.
     const token = tokenFromEnv() ?? await readToken(s.dataDir);
-    return new DaemonClient(`http://127.0.0.1:${s.port}`, s.dataDir, token);
+    const client = new DaemonClient(`http://127.0.0.1:${s.port}`, s.dataDir, token);
+    client.started = started;
+    return client;
+  }
+
+  /**
+   * How many panels hold the daemon's stream, or undefined when the daemon is
+   * one too old to count them.
+   *
+   * `/health` is the open route, so this costs nothing and cannot 401 its way
+   * into an error the agent has to read. A daemon that is not answering at all
+   * answers undefined too: the tool call that follows will say so itself, and a
+   * missing count is not worth a thrown error.
+   */
+  async viewers(): Promise<number | undefined> {
+    try {
+      const h = await (await this.send("GET", "/health")).json() as { viewers?: unknown };
+      return typeof h.viewers === "number" ? h.viewers : undefined;
+    } catch { return undefined; }
   }
 
   private async call<T>(method: "GET" | "POST", p: string, body?: unknown): Promise<T> {

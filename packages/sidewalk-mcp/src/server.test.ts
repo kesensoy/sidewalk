@@ -73,6 +73,61 @@ describe("sidewalk-mcp tools", () => {
   });
 });
 
+/**
+ * Is anybody watching? The agent cannot see the panel, and nothing can push to
+ * it, so a walk written for nobody looks exactly like a walk written for
+ * somebody until a verdict arrives — or does not. `viewers` is the one fact that
+ * tells the two apart: open `/events` streams, which only a panel holds.
+ */
+describe("the viewer count the agent is told", () => {
+  const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const open = async (id: string) => text(await mcp.callTool({ name: "walk_open", arguments: { project: "viewers", title: "Viewers", buildRef: "b", id } }));
+
+  it("rides on walk_open, and is 0 when nothing is watching", async () => {
+    const w = await open("viewers-none");
+    expect(w.viewers).toBe(0);
+    // `started` is absent rather than false: this client never spawned a daemon.
+    expect(w.started).toBeUndefined();
+  });
+
+  it("counts a panel that is holding the stream, and stops counting it when it goes", async () => {
+    const stream = await fetch(`${base()}/events`);
+    try {
+      let w = await open("viewers-one");
+      for (let i = 0; i < 100 && w.viewers === 0; i++) { await new Promise(r => setTimeout(r, 10)); w = await open("viewers-one"); }
+      expect(w.viewers).toBe(1);
+    } finally { await stream.body?.cancel(); }
+    let w = await open("viewers-one");
+    for (let i = 0; i < 100 && w.viewers !== 0; i++) { await new Promise(r => setTimeout(r, 10)); w = await open("viewers-one"); }
+    expect(w.viewers).toBe(0);
+  });
+
+  it("rides on an empty walk_wait, which is the call that might mean nobody is there", async () => {
+    await open("viewers-wait");
+    const empty = text(await mcp.callTool({ name: "walk_wait", arguments: { walk: "viewers-wait", after: 0, timeoutMs: 0 } }));
+    expect(empty.verdicts).toEqual([]);
+    expect(empty.viewers).toBe(0);
+  });
+
+  it("stays off a wait that carries verdicts: a person has already answered", async () => {
+    await open("viewers-answered");
+    await store.addItems("viewers-answered", [{ id: "a", kind: "info", owner: "gate", title: "a", body: "b" }]);
+    await store.addVerdict("viewers-answered", { itemId: "a", kind: "dismiss", text: "", nonce: "nonce-0002",
+      context: { url: "http://127.0.0.1:9340/", viewport: [1, 1], console: [], userAgent: "ua" } });
+    const answered = text(await mcp.callTool({ name: "walk_wait", arguments: { walk: "viewers-answered", after: 0, timeoutMs: 0 } }));
+    expect(answered.verdicts).toHaveLength(1);
+    expect(answered.viewers).toBeUndefined();
+  });
+
+  it("says in the instructions what an agent is to do about a 0, and never asks for the token", () => {
+    const guide = mcp.getInstructions() ?? "";
+    expect(guide).toContain("viewers is how many panels hold walkd's stream");
+    expect(guide).toContain("tell the person to open the sidewalk side panel");
+    expect(guide).toContain("npx -y sidewalk-walkd token --copy");
+    expect(guide).toContain("Never ask for the token and never print one");
+  });
+});
+
 describe("walk_wait bounds", () => {
   it("refuses a timeout past undici's headersTimeout", async () => {
     const tools = (await mcp.listTools()).tools;

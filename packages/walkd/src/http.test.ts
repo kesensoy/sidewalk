@@ -329,7 +329,7 @@ describe("the daemon's token, kept across restarts", () => {
     const h = await (await fetch(tbase + "/health")).json();
     // `pid` and `startedAt` are the identity half, checked in cli.test.ts against
     // the state file; here only that they are there and are this process's.
-    expect(h).toEqual({ ok: true, version: VERSION, graceMs: 0, auth: "token", pid: process.pid, startedAt: expect.any(String) });
+    expect(h).toEqual({ ok: true, version: VERSION, graceMs: 0, auth: "token", pid: process.pid, startedAt: expect.any(String), viewers: 0 });
     // The daemon the rest of this file uses has no token, and says so on the
     // same field — which is how a client tells the two apart.
     expect((await (await fetch(base + "/health")).json()).auth).toBe("none");

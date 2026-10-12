@@ -18,9 +18,16 @@ const run = async (fn: () => Promise<unknown>) => { try { return ok(await fn());
 export function buildServer(client: DaemonClient): McpServer {
   const s = new McpServer({ name: "sidewalk", version: VERSION }, { instructions: INSTRUCTIONS });
   s.registerTool("walk_open", {
-    description: "Open (or reopen) a walk. Returns {id,...}. Call once per build, once it is live. brief: two or three sentences the person reads first, under the title — what this build is, where to start, what to know before the first card; reopening with a new brief replaces it.",
+    description: "Open (or reopen) a walk. Returns {id, viewers, ...}. Call once per build, once it is live. brief: two or three sentences the person reads first, under the title — what this build is, where to start, what to know before the first card; reopening with a new brief replaces it. viewers is how many panels hold walkd's stream; at 0 nobody is watching yet.",
     inputSchema: walkInputSchema.shape,
-  }, (a) => run(() => client.open(a)));
+  }, (a) => run(async () => {
+    const w = await client.open(a);
+    // `viewers` and `started` are what let the agent open its mouth about the
+    // panel at the only moment it could know to: a walk opened with nobody
+    // watching, on a daemon this process started itself, is install day.
+    const viewers = await client.viewers();
+    return { ...w, ...(viewers === undefined ? {} : { viewers }), ...(client.started ? { started: true } : {}) };
+  }));
   s.registerTool("walk_add_items", {
     description: "Append items to a walk. sequence = ONE page + 2–8 ordered steps of do→see (the person ticks steps, one verdict for the card; use this for press-then-try-then-try-again paths, never one look per step); look = URL + do/see/pass; question = title + 2–4 options, recommended first, sheet sections only for a big decision; info = note. All take expect preconditions, group, target. Returns {seqs}. Read the server instructions for how to write a good walk.",
     inputSchema: { walk: z.string(), items: z.array(itemInputSchema).min(1) },
@@ -30,11 +37,17 @@ export function buildServer(client: DaemonClient): McpServer {
     inputSchema: { walk: z.string(), itemId: z.string(), reason: z.string() },
   }, (a) => run(() => client.withdraw(a.walk, a.itemId, a.reason)));
   s.registerTool("walk_wait", {
-    description: "Block until new verdicts arrive after cursor `after`, or timeoutMs elapses (0 = drain now, max 280000 (≈4.6 min); loop for longer). Returns {verdicts, cursor, closed}. Screenshots are file paths. An `ask` verdict carries a `reply` line: do what it says.",
+    description: "Block until new verdicts arrive after cursor `after`, or timeoutMs elapses (0 = drain now, max 280000 (≈4.6 min); loop for longer). Returns {verdicts, cursor, closed}, plus viewers when it comes back empty. Screenshots are file paths. An `ask` verdict carries a `reply` line: do what it says.",
     inputSchema: { walk: z.string(), after: z.number().int().min(0), timeoutMs: z.number().int().min(0).max(280000) },
   }, (a) => run(async () => {
     const r = await client.wait(a.walk, a.after, a.timeoutMs);
-    if (r.verdicts.length === 0) return r;
+    // An empty wait is the one that might mean nobody is there, so it is the
+    // one that carries the count. A wait with verdicts in it has an answer from
+    // a person already, and needs no telling.
+    if (r.verdicts.length === 0) {
+      const viewers = await client.viewers();
+      return viewers === undefined ? r : { ...r, viewers };
+    }
     const project = await client.projectOf(a.walk);
     return { ...r, verdicts: r.verdicts.map(v => withReply({ ...v, screenshotPath: client.shotPath({ project, id: a.walk }, v) })) };
   }));

@@ -27,6 +27,18 @@ Some clients cut long instructions short, so these come before everything else.
 - An `undo` verdict means unwind what you built on the answer it retracts, and
   expect a fresh one on the same item.
 
+## Is anybody watching
+
+`viewers` is how many panels hold walkd's stream. At 0 nobody is watching: tell
+the person to open the sidewalk side panel. If they say it asks for a token, say
+walkd put it on their clipboard when it started, or give them:
+`npx -y sidewalk-walkd token --copy`. Never ask for the token and never print
+one.
+
+`walk_open` returns it, and so does a `walk_wait` that comes back empty.
+`started: true` on `walk_open` means this session started walkd itself, so the
+person has seen nothing about it at all.
+
 ## The loop
 
 `walk_open` once the build is live (one walk per build), with a **brief**:
