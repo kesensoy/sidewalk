@@ -42,10 +42,14 @@ product that used it.
 - **`WALKD_NATIVE_ROOT` on anything that starts a real daemon.** A `walkd serve`
   writes native messaging manifests into the browser profiles under `$HOME`, so
   a test or a recording without that variable edits the person's own Chrome.
-  The e2e, the demo recorder, the screenshot run and the Firefox check set it by
-  name; `packages/walkd/test/native-root.ts` is the net under every walkd unit
-  test. In `serve()` the writer is off unless the caller asks, the same way the
-  clipboard is.
+  All seven spawn sites set it by name (the e2e and `e2e/shots.mjs`,
+  `demo/record.mjs` and the two `demo/probe-*.mjs`, the extension's
+  `screenshots.mjs` and `firefox-check.mjs`), and
+  `packages/walkd/test/native-root.ts` is the net under every walkd unit test.
+  In `serve()` the writer is off unless the caller asks, the same way the
+  clipboard is. Two further guards: only a daemon on the default data dir
+  registers with browsers at all, and on Windows an overridden root skips the
+  registry outright, since HKCU is not something it can redirect.
 - **Streams are append-only.** Nothing in `items.jsonl` / `verdicts.jsonl` is
   ever rewritten; state is derived. A torn last line is skipped, never a reason
   to truncate. All store mutations run under the per-walk lock.

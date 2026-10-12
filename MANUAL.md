@@ -179,9 +179,10 @@ node packages/walkd/bin/walkd.js native --remove   # take out everything it wrot
 
 `WALKD_NATIVE_ROOT` replaces the home directory every one of those paths hangs
 off, and it is what lets a daemon on another data directory register after all —
-inside that root. It is a test seam, not a setting: the e2e, the demo recorder,
-the screenshot run and the Firefox check all set it, because none of them has any
-business editing the browser profiles of whoever is running them. On Windows it
+inside that root. It is a test seam, not a setting: every script here that
+starts a real daemon sets it (the e2e and its screenshot runs, the demo recorder
+and its two probes, the Firefox check), because none of them has any business
+editing the browser profiles of whoever is running them. On Windows it
 cannot redirect anything, since a browser there reads a registry value rather
 than a folder, so with it set the registry half is skipped outright.
 

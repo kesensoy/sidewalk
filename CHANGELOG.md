@@ -23,7 +23,9 @@ half of the channel that will close it with no paste at all.
   manifests have to be on disk before any panel can ask. `walkd native`,
   `walkd native --status` and `walkd native --remove` are the three things you
   can do with it by hand. All of it is best effort and none of it can fail a
-  start.
+  start. Only the daemon on this machine's own data directory registers with
+  your browsers, so a `walkd serve --data-dir /tmp/somewhere` — an experiment,
+  a recording — writes its host and repoints nothing.
 - **The clipboard write conceals the token, and clears it again.** On a Mac it
   goes through AppKit so the value carries
   `org.nspasteboard.ConcealedType`, which the clipboard history managers read
