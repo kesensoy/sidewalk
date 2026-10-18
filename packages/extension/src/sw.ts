@@ -672,6 +672,9 @@ async function fullState(): Promise<SwState> {
   s.refused = dead.map(d => ({ itemId: d.verdict.itemId, error: d.error }));
   const port = s.port ?? DEFAULT_PORT;
   s.everConnected = connectedPorts.has(port) || Boolean(await storage.get(connectedKey(port)).catch(() => undefined));
+  // Whether there is one, never which one: the gear's field draws a run of dots
+  // from this and the panel never holds the token itself.
+  s.hasToken = currentToken !== "";
   return s;
 }
 

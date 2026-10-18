@@ -1080,14 +1080,37 @@ test("a request without the token is refused, and the pane says the daemon needs
   const sw = await worker();
   await sw.evaluate(() => chrome.storage.local.set({ "walkd:token": "not-this-daemons-token" }));
   await expect(panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 15_000 });
-  await expect(panel.locator(".note.token code")).toHaveText("npx -y sidewalk-walkd token --copy");
-  // The gear opened itself, so the field the notice points at is on screen.
+  // One slab: the sentence, Connect, and the way to the other door. No command
+  // in it — that lives in the gear, next to the field it feeds.
+  await expect(panel.locator(".note.token")).toContainText(`walkd on port ${PORT} is running and has not let this panel in yet.`);
+  await expect(panel.locator(".note.token code")).toHaveCount(0);
+  // And the gear does not open itself on a refusal any more: Connect is the
+  // first door, and pre-opening the second one left it standing open.
+  await expect(panel.locator("#prefs #token")).toBeHidden();
+
+  // The link is what opens it, and it goes to the field it named, with the
+  // command one line above.
+  await panel.locator(".note.token button[data-paste]").click();
   await expect(panel.locator("#prefs #token")).toBeVisible();
+  await expect(panel.locator("#prefs #token")).toBeFocused();
+  await expect(panel.locator("#prefs #token-how code")).toHaveText("npx -y sidewalk-walkd token --copy");
+  // A token *is* stored here — the wrong one — so the field shows dots and holds
+  // no value. Stored-ness is what the mask is about, not whether walkd took it,
+  // and the hidden line beside it says a paste replaces what is there.
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "••••••••••••");
+  await expect(panel.locator("#prefs #token")).toHaveValue("");
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("data-stored", "1");
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("aria-describedby", "token-stored");
+  await expect(panel.locator("#token-stored")).toHaveText("A token is stored. Pasting a new one replaces it.");
 
   // Put it back, the way a paste would, and the pane comes back.
   await sw.evaluate(t => chrome.storage.local.set({ "walkd:token": t }), token);
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator(".note.token")).toHaveCount(0);
+  // The gear was opened by the link above and the panel page outlives this
+  // test, so leave it as it was found: closed.
+  await panel.locator("#settings").click();
+  await expect(panel.locator("#prefs #token")).toBeHidden();
 });
 
 /**
@@ -1168,6 +1191,16 @@ test("pasting the token into the gear is what lets the pane in", async () => {
   await expect(panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 15_000 });
   await expect(panel.locator('header[data-walk-id="w-paste"]')).toHaveCount(0);
 
+  // The way in is the notice's own link, which is the route a person takes: the
+  // gear does not open itself on a refusal, and this is what opens it and puts
+  // the cursor where the paste goes. With nothing stored, the field says so.
+  await expect(panel.locator("#prefs #token")).toBeHidden();
+  await panel.locator(".note.token button[data-paste]").click();
+  await expect(panel.locator("#prefs #token")).toBeFocused();
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "paste it here");
+  await expect(panel.locator("#prefs #token")).not.toHaveAttribute("data-stored", "1");
+  await expect(panel.locator("#prefs #token-how code")).toHaveText("npx -y sidewalk-walkd token --copy");
+
   // The paste itself, into the gear, with the trailing newline a terminal copy
   // brings along; Save is the button beside the field.
   await panel.locator("#prefs #token").fill(`${token}\n`);
@@ -1188,6 +1221,14 @@ test("pasting the token into the gear is what lets the pane in", async () => {
   await expect(panel.locator("#receipt b")).toHaveText("Connected.");
   await expect(panel.locator("#receipt")).toBeHidden({ timeout: 6_000 });
   console.log(`receipt proof: the paste door said "Connected. walkd accepted the token you pasted. Your walks open here from now on." and took it away by itself`);
+  // The token has done its job and leaves the page: dots in the placeholder,
+  // nothing in the value, and the gear's command row gone with the notice —
+  // nobody needs to be told how to get a token once walkd has let them in.
+  await expect(panel.locator("#prefs #token")).toHaveValue("");
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "••••••••••••");
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("data-stored", "1");
+  await expect(panel.locator("#prefs #token-how")).toBeHidden();
+  console.log(`field proof: after the paste the field holds no value and shows ${"••••••••••••"}, and the gear's command row is gone`);
 
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator('header[data-walk-id="w-paste"]')).toHaveCount(1, { timeout: 15_000 });
@@ -1240,6 +1281,10 @@ test("a Save is a check: a wrong token is refused out loud and the pane stays ou
   await panel.locator("#token-save").click();
   await expect(panel.locator("#token-said")).toHaveText("Connected.", { timeout: 15_000 });
   await expect(panel.locator("#token-said")).toHaveClass("pass");
+  // The one that worked leaves the page too, the same way.
+  await expect(panel.locator("#prefs #token")).toHaveValue("");
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "••••••••••••");
+  await expect(panel.locator("#prefs #token")).toHaveAttribute("data-stored", "1");
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator('[data-item="ck-a"]')).toBeVisible({ timeout: 15_000 });
 });
@@ -1581,24 +1626,31 @@ test("with no host on disk the pane says so, and Connect says what came of it �
     await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
     await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 20_000 });
     await expect(pane.panel.locator(".note.token")).toBeVisible();
-    await expect(pane.panel.locator(".note.token")).toContainText("Press Connect and allow the panel to talk to walkd");
+    await expect(pane.panel.locator(".note.token")).toContainText(`walkd on port ${PORT} is running and has not let this panel in yet.`);
     await expect(pane.panel.locator(".note.token button[data-connect]")).toHaveText("Connect");
-    await expect(pane.panel.locator(".note.token code")).toHaveText("npx -y sidewalk-walkd token --copy");
-    // The gear opened itself, so the field the notice's second half points at
-    // is on screen.
-    await expect(pane.panel.locator("#prefs #token")).toBeVisible();
+    await expect(pane.panel.locator(".note.token button[data-paste]")).toHaveText("Paste the token instead");
+    // The command is not in the notice, and the gear is not open: Connect is the
+    // first door, and nothing has been pressed yet.
+    await expect(pane.panel.locator(".note.token code")).toHaveCount(0);
+    await expect(pane.panel.locator("#prefs #token")).toBeHidden();
     // The worker did ask, and the browser's answer was the one four different
     // manifest mistakes all produce.
     expect(pane.log.join("\n")).toContain("no token through the browser (noHost");
     expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBeUndefined();
-    console.log(`hands-free proof: with no manifest the pane says "walkd on ${PORT} needs the token", offers Connect, and keeps the command`);
+    console.log(`hands-free proof: with no manifest the pane says "walkd on ${PORT} needs the token", offers Connect and the way to the gear, and holds no command of its own`);
 
-    // Pressed with nothing to answer: one line, and the command still under it.
+    // Pressed with nothing to answer: one line, and the form offered rather than
+    // left to be found — the gear opens itself with the command above the field.
     await pane.panel.locator(".note.token button[data-connect]").click();
-    await expect(pane.panel.locator(".note.token .said")).toHaveText("walkd did not answer through the browser. Paste the token instead.", { timeout: 15_000 });
-    await expect(pane.panel.locator(".note.token code")).toHaveText("npx -y sidewalk-walkd token --copy");
+    await expect(pane.panel.locator(".note.token .said")).toHaveText("walkd did not answer through the browser.", { timeout: 15_000 });
+    await expect(pane.panel.locator("#prefs #token")).toBeVisible();
+    await expect(pane.panel.locator("#prefs #token-how code")).toHaveText("npx -y sidewalk-walkd token --copy");
+    // Nothing is stored in this profile, so the field says what it wants.
+    await expect(pane.panel.locator("#prefs #token")).toHaveAttribute("placeholder", "paste it here");
+    // Connect stays: the manifest may land a moment later, and it does below.
+    await expect(pane.panel.locator(".note.token button[data-connect]")).toBeEnabled();
     await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`);
-    console.log(`hands-free proof: Connect pressed with no host — "walkd did not answer through the browser. Paste the token instead."`);
+    console.log(`hands-free proof: Connect pressed with no host — "walkd did not answer through the browser." and the gear opened itself at the field`);
 
     // The manifest lands now, with the browser already running and nothing
     // restarted, because the lookup happens on every call.
@@ -1614,6 +1666,13 @@ test("with no host on disk the pane says so, and Connect says what came of it �
     await expect(pane.panel.locator("#receipt")).toHaveText("Connected. walkd handed over its token. Your walks open here from now on.");
     await expect(pane.panel.locator("#receipt b")).toHaveText("Connected.");
     await expect(pane.panel.locator("#receipt")).toBeHidden({ timeout: 6_000 });
+    // The gear is still open — the failed press opened it and nothing closes it
+    // behind the person — and the field now shows that a token is stored, with
+    // the command gone because nobody needs it any more.
+    await expect(pane.panel.locator("#prefs #token")).toHaveValue("");
+    await expect(pane.panel.locator("#prefs #token")).toHaveAttribute("placeholder", "••••••••••••");
+    await expect(pane.panel.locator("#prefs #token")).toHaveAttribute("data-stored", "1");
+    await expect(pane.panel.locator("#prefs #token-how")).toBeHidden();
     console.log(`hands-free proof: Connect pressed again with the manifest in the profile — connected to walkd on ${PORT}, token identical, nothing restarted`);
     console.log(`receipt proof: the host door said "Connected. walkd handed over its token. Your walks open here from now on." and took it away by itself`);
   } finally {
@@ -1670,6 +1729,10 @@ test("a token the host hands over that walkd refuses is said once, and not asked
     await pane.panel.locator(".note.token button[data-connect]").click();
     await expect(pane.panel.locator(".note.token .said")).toHaveText("walkd refused the token the host handed over. Restart walkd, then press Connect again.", { timeout: 15_000 });
     expect(asks(), "the press is one ask of its own").toBe(3);
+    // No way to the gear offered, and the gear not opened: a paste of the token
+    // walkd is already refusing is no way out, and the line says what is.
+    await expect(pane.panel.locator(".note.token button[data-paste]")).toHaveCount(0);
+    await expect(pane.panel.locator("#prefs")).toBeHidden();
     // And no receipt, at any point: a pane walkd is refusing has nothing to
     // show a receipt for, which is the lie the gear's own check went out to end.
     await expect(pane.panel.locator("#receipt")).toBeHidden();

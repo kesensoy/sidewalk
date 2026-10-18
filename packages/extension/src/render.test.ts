@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
+import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 
 const look = (id: string, seq: number, group?: string): Item => ({ id, seq, group, kind: "look", owner: "g", title: `T${id}`, url: "http://x/", do: "do", see: "see", pass: "pass", expect: [], addedAt: "2026-09-16T00:00:00Z" });
@@ -1047,28 +1047,64 @@ describe("first run and version notice", () => {
   // The daemon keeps its token in a file an extension cannot read, so this
   // notice says where to get it, and the first-run note says it exists at all
   // (secrets review).
-  it("the needs-token notice names the port, offers Connect first and the command second", () => {
+  /**
+   * One slab: a sentence, the one thing to press, and a text button to the
+   * other door. The command that prints a token is not here — it is in the gear,
+   * one line above the field it feeds (`renderTokenHow`), so that reading it and
+   * pasting happen in the same place.
+   */
+  it("the needs-token notice is one sentence, Connect, and the way to the gear", () => {
     const html = renderTokenNotice(8761);
     expect(html).toContain('class="note token"');
-    expect(html).toContain("walkd on port 8761 will not let this panel in without its token");
-    expect(html).toContain("Press Connect and allow the panel to talk to walkd");
-    expect(html).toContain("paste the token into the gear above");
+    expect(html).toContain("walkd on port 8761 is running and has not let this panel in yet.");
     expect(html).toContain(`>${CONNECT_LABEL}<`);
     expect(html).toContain('data-connect="1"');
-    expect(html).toContain(`<code>${TOKEN_COMMAND}</code>`);
-    expect(html).toContain(`data-copy-text="${TOKEN_COMMAND}"`);
-    expect(html).toContain('aria-label="Copy the token command"');
-    expect(TOKEN_COMMAND).toBe("npx -y sidewalk-walkd token --copy");
-    // The button is the first thing after the sentence, and the command after
-    // it: pressing is what most people will do, and the command is the way
-    // through for a browser that cannot reach walkd at all.
-    expect(html.indexOf('data-connect')).toBeLessThan(html.indexOf('<code>'));
+    // The other door: a button, because it goes nowhere — it opens the gear and
+    // puts the cursor in the field — and it names what it does.
+    expect(html).toContain('<button class="link" data-paste="1" aria-controls="prefs">Paste the token instead</button>');
+    expect(html.indexOf("data-connect")).toBeLessThan(html.indexOf("data-paste"));
+    // No command and no Copy in the notice at all.
+    expect(html).not.toContain("<code>");
+    expect(html).not.toContain("data-copy-text");
+    expect(html).not.toContain("aria-label=\"Copy the token command\"");
+    expect(html).not.toContain(TOKEN_COMMAND);
     // Nothing is said about a press that has not happened, and the button is
     // pressable.
     expect(html).not.toContain('class="said');
     expect(html).not.toContain("disabled");
     // The notice holds no token, only the two ways to one.
     expect(html).not.toMatch(/Bearer/);
+  });
+
+  /**
+   * The command and the field, together, in the gear. One source for the string
+   * (`TOKEN_COMMAND`), so the constant the first-run note and the manual quote
+   * cannot drift from the one a person is told to run here.
+   */
+  it("the gear's own row carries the command that prints a token, with its Copy", () => {
+    const html = renderTokenHow();
+    expect(html).toContain("Get the token");
+    expect(html).toContain(`<code>${TOKEN_COMMAND}</code>`);
+    expect(html).toContain(`data-copy-text="${TOKEN_COMMAND}"`);
+    expect(html).toContain('aria-label="Copy the token command"');
+    expect(html).toContain(">Copy<");
+    expect(TOKEN_COMMAND).toBe("npx -y sidewalk-walkd token --copy");
+    // A label, like "Text size" — not a sentence, and not an instruction.
+    expect(html).not.toContain(".");
+  });
+
+  /**
+   * What the field says when there is nothing in it, and what a screen reader is
+   * told when it is showing dots. The dots are the pane's existing "a value
+   * exists and nothing about what it is"; the sentence is for the reader that
+   * cannot see them.
+   */
+  it("the field's two placeholders say a value exists without saying what it is", () => {
+    expect(TOKEN_PLACEHOLDER).toBe("paste it here");
+    expect(SECRET_DOTS).toBe("••••••••••••");
+    expect(TOKEN_STORED_DESC).toBe("A token is stored. Pasting a new one replaces it.");
+    for (const line of [TOKEN_PLACEHOLDER, TOKEN_STORED_DESC]) expect(line).not.toMatch(/secure/i);
+    expect(TOKEN_STORED_DESC).not.toMatch(/Bearer/);
   });
 
   /**
@@ -1084,12 +1120,12 @@ describe("first run and version notice", () => {
     expect(asking).toContain("disabled");
 
     const refused = renderTokenNotice(8761, "refused");
-    expect(refused).toContain("The browser did not allow it. Paste the token instead.");
+    expect(refused).toContain("The browser did not allow it.");
     expect(refused).toContain('class="said issue"');
     expect(refused).not.toContain("disabled");
 
     const failed = renderTokenNotice(8761, "failed");
-    expect(failed).toContain("walkd did not answer through the browser. Paste the token instead.");
+    expect(failed).toContain("walkd did not answer through the browser.");
     expect(failed).toContain('class="said issue"');
 
     // The one end a paste cannot help: the host handed over a token this daemon
@@ -1098,18 +1134,27 @@ describe("first run and version notice", () => {
     const stale = renderTokenNotice(8761, "stale");
     expect(stale).toContain("walkd refused the token the host handed over. Restart walkd, then press Connect again.");
     expect(stale).toContain('class="said issue"');
-    expect(stale).not.toContain("Paste the token instead.");
+    // And no way to the gear: a paste of the token walkd is already refusing is
+    // no way out, so the slab says the one thing that is.
+    expect(stale).not.toContain("Paste the token instead");
+    expect(stale).not.toContain("data-paste");
 
     expect(connectSay(undefined)).toBeNull();
     expect(connectSay("asking")).toEqual({ text: CONNECT_ASKING, cls: "" });
     expect(connectSay("refused")).toEqual({ text: CONNECT_REFUSED, cls: "issue" });
     expect(connectSay("failed")).toEqual({ text: CONNECT_FAILED, cls: "issue" });
     expect(connectSay("stale")).toEqual({ text: CONNECT_STALE, cls: "issue" });
-    // Every one of them says what to do next, and none says "secure" or blames
-    // the person.
-    for (const line of [CONNECT_REFUSED, CONNECT_FAILED]) expect(line).toContain("Paste the token instead.");
+    // The two that leave a form to fill no longer say so in words: the link
+    // under them does, and by then the gear has opened itself at the field.
+    for (const end of ["refused", "failed"] as const) {
+      expect(renderTokenNotice(8761, end)).toContain("data-paste");
+      expect(connectSay(end)!.text).not.toContain("Paste the token instead");
+    }
     expect(CONNECT_STALE).toContain("Restart walkd");
     for (const line of [CONNECT_ASKING, CONNECT_REFUSED, CONNECT_FAILED, CONNECT_STALE]) expect(line).not.toMatch(/secure/i);
+    // One sentence each, and none of them blames the person.
+    expect(CONNECT_REFUSED).toBe("The browser did not allow it.");
+    expect(CONNECT_FAILED).toBe("walkd did not answer through the browser.");
   });
 
   /**

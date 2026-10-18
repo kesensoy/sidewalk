@@ -119,6 +119,17 @@ export type SwState = {
    *  off storage, so a fresh install can be told apart from a daemon that is
    *  merely down. Absent from an older worker. */
   everConnected?: boolean;
+  /**
+   * Is a token stored for this profile at all?
+   *
+   * The boolean and never the value: the pane shows a run of dots when one is
+   * stored, and the panel holds no copy of the token itself. It comes from the
+   * worker because the worker is what the token reaches — a paste, or the host
+   * handing one over — and a panel that read storage once at load would show
+   * dots that had stopped being true the moment Connect worked. Absent from an
+   * older worker, which reads as none.
+   */
+  hasToken?: boolean;
   walks: WalkView[];
   queued: number;
   /** Verdicts the daemon refused outright; they will never reach the agent. */

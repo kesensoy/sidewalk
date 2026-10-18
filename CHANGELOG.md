@@ -29,6 +29,23 @@ with nothing pasted and nothing printed.
   it creates can. Nothing on the pane moves for it. If that frame comes back
   without the method too, the panel reloads itself to finish, which is the one
   path that costs the pane its drafts and its scroll. Firefox needs neither.
+- **The notice is one slab, and the gear holds the other door.** It says *walkd
+  on port 8760 is running and has not let this panel in yet*, and under it there
+  is one thing to press: Connect, carrying the pane's single accent. The command
+  that prints a token is no longer in the notice — *Paste the token instead*, a
+  text button on its own line, opens the gear and puts the cursor in the field,
+  with `npx -y sidewalk-walkd token --copy` and its Copy button on the row
+  directly above it. The gear no longer opens itself the moment walkd refuses;
+  it opens when that button is pressed, or after a press of Connect that did not
+  work, and never over one that did.
+- **The gear's token field shows dots and holds nothing.** The panel used to
+  read the stored token into the field once at startup, which left a credential
+  in the page for its lifetime and, once Connect started storing tokens the
+  panel had not typed, showed whatever had been there at load — which was
+  usually nothing. The field is empty now and the dots are its placeholder,
+  drawn from one boolean the worker already knows, so it cannot go stale and
+  there is nothing in the page to read. Pasting over the dots replaces the
+  token; an untouched field saves nothing.
 - **A receipt says walkd has let the pane in.** Under the band, in the notice's
   own box, for four seconds: *Connected.* in the pane's pass green, then one
   sentence saying which door it came through — walkd handing its token over, or

@@ -344,16 +344,21 @@ export function renderVersionNotice(mine: string, theirs: string, port: number):
  */
 export const TOKEN_COMMAND = "npx -y sidewalk-walkd token --copy";
 export const tokenNotice = (port: number) =>
-  `walkd on port ${port} will not let this panel in without its token. Press Connect and allow the panel to talk to walkd; the browser asks once. If this browser cannot do that, run this and paste the token into the gear above:`;
+  `walkd on port ${port} is running and has not let this panel in yet.`;
 export const NEEDS_TOKEN_STATUS = "needs the token";
 export const needsTokenLine = (port: number) => `walkd on ${port} ${NEEDS_TOKEN_STATUS}`;
 
 /**
- * The Connect button, and what it is saying right now.
+ * The Connect button, what it is saying right now, and the way past it.
  *
- * The button comes first and the command second, because pressing it is what
- * most people will do and the command is the fallback for a browser that cannot
- * reach the host at all.
+ * One slab, and one thing to press in it: Connect carries the pane's single
+ * accent — the treatment Go has, because "this is the thing to press" is what
+ * that accent is for — and everything else in the box is text. The command that
+ * prints the token is not here; it lives in the gear, one line above the field
+ * it feeds, so the person reads it and pastes in the same place instead of
+ * reading down and pasting up. *Paste the token instead* is how they get there:
+ * a muted underlined text button, the lowest-ranked interactive thing the pane
+ * has, on its own line under the Connect row.
  *
  * The press has to be the person's own: `permissions.request` is refused
  * outside a user action — Firefox says so in as many words
@@ -363,9 +368,12 @@ export const needsTokenLine = (port: number) => `walkd on ${port} ${NEEDS_TOKEN_
  * must be stored by one code path and not two.
  */
 export const CONNECT_LABEL = "Connect";
+export const PASTE_LINK = "Paste the token instead";
 export const CONNECT_ASKING = "Asking walkd…";
-export const CONNECT_REFUSED = "The browser did not allow it. Paste the token instead.";
-export const CONNECT_FAILED = "walkd did not answer through the browser. Paste the token instead.";
+// Neither of these two says what to do next any more: the link under them does,
+// and by the time either is on screen the gear has opened itself at the field.
+export const CONNECT_REFUSED = "The browser did not allow it.";
+export const CONNECT_FAILED = "walkd did not answer through the browser.";
 /**
  * The host answered, and walkd refused what it gave.
  *
@@ -398,8 +406,37 @@ export function renderTokenNotice(port: number, connecting?: Connecting): string
     `<div class="connect"><button data-connect="1"${connecting === "asking" ? " disabled" : ""}>${CONNECT_LABEL}</button>` +
     (say ? `<span class="said ${say.cls}" role="status">${esc(say.text)}</span>` : "") +
     `</div>` +
-    commandRow(TOKEN_COMMAND, `${COPY_LABEL} the token command`) + `</section>`;
+    // Not on the stale end: there the daemon is refusing the very token the
+    // clipboard would have, so sending somebody to paste it would be sending
+    // them nowhere. The line above says what does work.
+    (connecting === "stale" ? "" : `<button class="link" data-paste="1" aria-controls="prefs">${PASTE_LINK}</button>`) +
+    `</section>`;
 }
+
+/**
+ * The gear's own first row while walkd is refusing: how to get a token, one
+ * line above the field it goes into.
+ *
+ * It is in the gear and not in the notice because its only job is to feed that
+ * field. The notice is one sentence and one button; this is the other door, and
+ * both halves of it are here together — the command with its Copy, then the
+ * field, then what walkd said about what was pasted.
+ */
+export const TOKEN_HOW_LABEL = "Get the token";
+
+export function renderTokenHow(): string {
+  return `<span>${TOKEN_HOW_LABEL}</span>` + commandRow(TOKEN_COMMAND, `${COPY_LABEL} the token command`);
+}
+
+/** The field's placeholder when nothing is stored, and the one when something is. */
+export const TOKEN_PLACEHOLDER = "paste it here";
+/**
+ * What a screen reader is told about a field showing dots. `aria-describedby`
+ * reads hidden text, so this sentence is announced where the dots themselves
+ * would be twelve bullets — and it says the one thing a person needs to know
+ * before they paste over it.
+ */
+export const TOKEN_STORED_DESC = "A token is stored. Pasting a new one replaces it.";
 
 /**
  * The receipt: one line under the band saying the daemon has let the pane in.

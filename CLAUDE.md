@@ -86,7 +86,7 @@ product that used it.
 ## How to check your work
 
 ```bash
-npm run build && npm test          # 36 files, 571 unit tests
+npm run build && npm test          # 36 files, 573 unit tests
 npm run e2e                        # 42 Playwright tests, unpacked extension vs fixtures/site
 npm run pack:check                 # before a publish: the two packages as npm would send them
 node packages/walkd/bin/walkd.js status

@@ -1,6 +1,6 @@
 import type { ConnectAnswer, GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
-import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, receiptSay, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
+import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, SECRET_DOTS, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, applyChoices, drainPercent, needsText, needsTokenLine, receiptSay, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
 import { type Area, ASK_TIMEOUT_MS, NATIVE_PERMISSION, armConnect, askHost, canAskHere, freshRuntime, takeArmed } from "./native.js";
 import { versionsDiffer } from "./version.js";
 import { setMarkup } from "./markup.js";
@@ -80,13 +80,18 @@ function setShots(next: Shots) {
 }
 
 /**
- * The daemon's token, the one connection setting the person has to carry across
- * by hand: walkd writes it to a file and an extension cannot read files (audit
- * 2026-10-04, F1). Kept beside the port in `chrome.storage.local`, where the
+ * The daemon's token, the other way in: walkd writes it to a file and an
+ * extension cannot read files (audit 2026-10-04, F1), so a person can carry it
+ * across by hand. Kept beside the port in `chrome.storage.local`, where the
  * worker reads it; saving it is what makes the worker retarget and try again.
  *
- * The field shows what is stored, as dots — it is a credential on screen, and a
- * person who cannot see whether anything is in there would paste twice.
+ * **The field never holds the stored token.** It used to be filled once at
+ * startup from storage, which put the credential in the DOM for the page's life
+ * and — once Connect started storing tokens the panel had not typed — showed
+ * whatever had been there at load, which for the owner was nothing. What it
+ * shows now is a run of dots as its *placeholder* when the worker says one is
+ * stored, so there is no value in the page to read, to leak into a screenshot,
+ * or to go stale. Pasting over the dots is what replaces it.
  */
 const tokenField = () => document.getElementById("token") as HTMLInputElement | null;
 
@@ -225,7 +230,16 @@ async function saveToken() {
   // The same receipt as the host door, because it is the same event: walkd has
   // let the pane in. The gear's own line stays too — that one is the verdict on
   // this paste, and it is what the person was waiting on.
-  if (answer.check === "connected") sayReceipt("paste");
+  if (answer.check === "connected") {
+    // The token has done its job and leaves the page: the field goes back to
+    // dots, which is the broadcast's answer a moment later anyway, and nothing
+    // of the credential is left in the DOM to be read or photographed.
+    field.value = "";
+    field.placeholder = SECRET_DOTS;
+    field.dataset.stored = "1";
+    field.setAttribute("aria-describedby", "token-stored");
+    sayReceipt("paste");
+  }
   // A refused token is a paste that has to happen again, so the field is where
   // the hand already is, with the wrong one selected for the next paste to replace.
   if (answer.check === "refused") { field.focus(); field.select(); }
@@ -246,14 +260,6 @@ function askAboutToken(): Promise<TokenAnswer | { check: "noAnswer"; port: numbe
     new Promise<typeof none>(r => setTimeout(() => r(none), TOKEN_CHECK_MS)),
   ]);
 }
-
-(async () => {
-  try {
-    const stored = parseToken((await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY]);
-    const field = tokenField();
-    if (field) field.value = stored;
-  } catch { /* storage refused: the field starts empty and a paste still works */ }
-})();
 
 (async () => {
   try {
@@ -293,11 +299,22 @@ function tickDrains() {
 setInterval(tickDrains, DRAIN_TICK_MS);
 
 /**
- * The gear opens itself the first time a daemon refuses the token, because the
- * field the notice points at is inside it. Once per pane: a person who closes it
- * again has closed it, and a repaint must not fight them.
+ * Open the gear, and put the cursor in the token field when that is what was
+ * asked for.
+ *
+ * The gear does not open itself on a refusal any more. Connect is the first door
+ * now, and pre-opening the second one left it standing open over the receipt
+ * when the press worked. It opens on *Paste the token instead*, which is
+ * somebody asking for the field, and after a press that did not work, which is
+ * the pane offering the form rather than making them find it. A press that is
+ * still going, or one that worked, leaves it exactly as they had it.
  */
-let openedForToken = false;
+function openGear(focusField: boolean) {
+  document.getElementById("prefs")!.hidden = false;
+  if (!focusField) return;
+  const field = tokenField();
+  field?.focus();
+}
 
 /**
  * What the Connect button is in the middle of, or what came of the last press.
@@ -353,7 +370,7 @@ async function pressConnect(asking: Promise<boolean>) {
   paint();
   let granted = false;
   try { granted = (await asking) === true; } catch { granted = false; }
-  if (!granted) { connecting = "refused"; paint(); return; }
+  if (!granted) { connecting = "refused"; paint(); offerTheForm(); return; }
   const port = state.port ?? DEFAULT_PORT;
   if (canAskHere()) { paintConnect(await connectThrough(port)); return; }
   const fresh = await freshRuntime(document).catch(() => null);
@@ -399,6 +416,20 @@ async function connectThrough(port: number, runtime = chrome.runtime): Promise<C
   return send<ConnectAnswer | undefined>({ t: "panel:connect", asked: { port: r.port, token: r.token } }).catch(() => undefined);
 }
 
+/**
+ * The two ends that leave the person a form to fill: open it for them.
+ *
+ * Called once per press — from the refusal above and from `paintConnect` below,
+ * which is every other end — and never from `paint()`, because a repaint must
+ * not fight somebody who has closed the gear again. The focus stays on Connect,
+ * which may still be the thing that works: a manifest that lands a moment
+ * later, or a browser they want to try once more. The `stale` end does not open
+ * it, because a paste of the token walkd is already refusing is no way out.
+ */
+function offerTheForm() {
+  if (connecting === "refused" || connecting === "failed") openGear(false);
+}
+
 /** The one line a press earns, and the word behind it for whoever is looking. */
 function paintConnect(answer: ConnectAnswer | undefined) {
   // The reason never reaches the pane: four of the likeliest mistakes report
@@ -412,6 +443,7 @@ function paintConnect(answer: ConnectAnswer | undefined) {
   // dead end as a host that did not.
   connecting = !answer ? "failed" : answer.end === "refusedToken" ? "stale" : answer.end === "noHost" ? "failed" : undefined;
   paint();
+  offerTheForm();
   // After the paint, not before it: `connected` here is the daemon's own verdict
   // (`sw.ts` `verdict`), and the state this pane is painting from may not have
   // caught up with it yet — a paint that still reads `needsToken` would take the
@@ -435,10 +467,44 @@ function paintConnect(answer: ConnectAnswer | undefined) {
 })();
 
 
+/**
+ * The gear's first row while walkd is refusing: the command that prints a token,
+ * with its Copy button, directly above the field it feeds. Built once — it never
+ * changes — and shown or hidden by `paint()` from the one state that governs it.
+ */
+setMarkup(document.getElementById("token-how")!, renderTokenHow());
+(() => {
+  const el = document.getElementById("token-stored");
+  if (el) el.textContent = TOKEN_STORED_DESC;
+})();
+
+/**
+ * The field, as the worker says the token stands: a run of dots for one that is
+ * stored and `paste it here` for none, in the placeholder either way, so the
+ * page holds no credential. `aria-describedby` points at a hidden sentence
+ * rather than at twelve bullets, which is what a screen reader can use.
+ */
+function paintTokenField() {
+  const field = tokenField();
+  if (!field) return;
+  const stored = state.hasToken === true;
+  field.placeholder = stored ? SECRET_DOTS : TOKEN_PLACEHOLDER;
+  if (stored) {
+    field.dataset.stored = "1";
+    field.setAttribute("aria-describedby", "token-stored");
+  } else {
+    delete field.dataset.stored;
+    field.removeAttribute("aria-describedby");
+  }
+}
+
 function paint() {
   const focus = snapshotFocus(document);
   dropStaleTokenSay();
-  if (state.needsToken && !openedForToken) { openedForToken = true; document.getElementById("prefs")!.hidden = false; }
+  // The command belongs with the field, and only while there is a reason for it:
+  // once walkd has let the pane in, nobody needs to be told how to get a token.
+  document.getElementById("token-how")!.hidden = !state.needsToken;
+  paintTokenField();
   const refused = new Set((state.refused ?? []).map(r => r.itemId));
   const status = document.getElementById("status")!;
   // Design language v3, §Motion: the line says which daemon, and on which port,
@@ -586,6 +652,9 @@ document.addEventListener("click", async e => {
     void pressConnect(asking);
     return;
   }
+  // *Paste the token instead*: the other door, and the only thing on the pane
+  // that asks for the field by name — so it opens the gear and goes there.
+  if (b.dataset.paste !== undefined) { openGear(true); return; }
   if (b.id === "settings") { const p = document.getElementById("prefs")!; p.hidden = !p.hidden; return; }
   if (b.id === "token-save") { await saveToken(); return; }
   if (b.id === "scale-down") { stepScale(-1); return; }

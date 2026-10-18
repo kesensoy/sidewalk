@@ -143,16 +143,17 @@ user can write, launches the program it names, and refuses every extension but
 the one that manifest lists. That is how the panel gets the token without the
 paste.
 
-**The panel's half: Connect.** When walkd refuses it, the pane's notice offers a
-Connect button above the command. Pressing it asks the browser for one
-permission — `nativeMessaging`, which the extension declares as optional rather
-than required, so an update could never disable the extension until somebody
-accepted it — and the browser asks you once per profile. After that the token is
-fetched from the host and stored where a paste would have gone, the connection
-line says *Connected to walkd on 8760*, and a receipt under the band says so for
-a few seconds. The permission request needs
-your own click (both browsers refuse it otherwise), which is why there is a
-button and not a quiet retry.
+**The panel's half: Connect.** When walkd refuses it, the pane says so in one
+sentence above the cards — *walkd on port 8760 is running and has not let this
+panel in yet* — with one thing to press under it. Pressing it asks the browser
+for one permission — `nativeMessaging`, which the extension declares as optional
+rather than required, so an update could never disable the extension until
+somebody accepted it — and the browser asks you once per profile. After that the
+token is fetched from the host and stored where a paste would have gone, the
+connection line says *Connected to walkd on 8760*, and a receipt under the band
+says so for a few seconds. The permission request needs your own click (both
+browsers refuse it otherwise), which is why there is a button and not a quiet
+retry.
 
 **The panel asks through a hidden frame of its own on that first press, and that
 is the fix for a real bug.** Chrome hands the native messaging API only to
@@ -235,9 +236,15 @@ cannot redirect anything, since a browser there reads a registry value rather
 than a folder, so with it set the registry half is skipped outright.
 
 A pane with no token, or an old one, says *walkd on 8760 needs the token* on its
-connection line and offers two ways out above the cards — the Connect button
-first, then `npx -y sidewalk-walkd token --copy` — with the gear already open at
-the field. It does not climb a reconnect ladder for it:
+connection line, and the slab above the cards offers the two ways out in order:
+Connect, and under it *Paste the token instead*. That second one is a text
+button, not a command — it opens the gear, where `npx -y sidewalk-walkd token
+--copy` sits on the row directly above the field it feeds, so the command and
+the paste are in the same place. The gear opens itself only after a press that
+did not work, and never over a press that did. Once a token is stored the field
+shows a row of dots and holds nothing: the panel never keeps a copy of the
+token, so there is none on screen, none in a screenshot of the pane, and none to
+go stale. Pasting over the dots replaces it. It does not climb a reconnect ladder for it:
 waiting changes nothing, and saving the token in the gear reconnects at once. A
 verdict clicked meanwhile is not lost. A 401 is not a refusal the queue buries,
 so the verdict goes as soon as the token lands. **Save in the gear is a check**:
