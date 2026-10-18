@@ -147,11 +147,27 @@ paste.
 Connect button above the command. Pressing it asks the browser for one
 permission — `nativeMessaging`, which the extension declares as optional rather
 than required, so an update could never disable the extension until somebody
-accepted it — and the browser asks you once per profile. After that the worker
-asks the host for the token itself, stores it where a paste would have gone, and
-the connection line says *Connected to walkd on 8760*. The permission request
-needs your own click (both browsers refuse it otherwise), which is why there is
-a button and not a quiet retry.
+accepted it — and the browser asks you once per profile. After that the token is
+fetched from the host and stored where a paste would have gone, and the
+connection line says *Connected to walkd on 8760*. The permission request needs
+your own click (both browsers refuse it otherwise), which is why there is a
+button and not a quiet retry.
+
+**The panel may reload itself on that first press, and that is the fix for a
+real bug.** Chrome hands the native messaging API only to contexts created
+*after* the grant (measured on 2026-10-18, on the store build, with a real
+grant): afterwards `permissions.contains` is true everywhere, while
+`chrome.runtime.sendNativeMessage` is still undefined both in the extension's
+background worker and in the panel page that drew the button — and a side panel
+closed and opened again has it and reaches the host first time. No wait fixes a
+context that already exists. So when the page cannot make the call, it writes one
+short-lived note of what the press was about, reloads, and the load that follows
+finishes the press from a context the browser has caught up with. It happens
+once per profile, while the pane is locked out of walkd and has nothing of yours
+on screen to lose. Firefox was measured the other way on the same day — the page
+that is already open gets the function the moment you accept the doorhanger — so
+it never reloads. Either way the token is stored by the worker, under the same
+rules, and the pane says the same four things.
 
 The answer is taken only when it is about the daemon the pane is pointed at: one
 host serves the machine and answers about whichever walkd owns the registration,
@@ -825,7 +841,7 @@ at the port it named. Nothing in the suite binds 8760 or 9340, and Chrome's
 remote debugging is 9341 — never 9222, which belongs to the chrome-devtools MCP. It refuses to start
 if something is already answering on 8761.
 
-Thirty-nine tests, one Chromium with the extension loaded unpacked, one walk per
+Forty-one tests, one Chromium with the extension loaded unpacked, one walk per
 test: an item arriving over SSE and Go navigating and highlighting; the verdict
 that carries its screenshot, build id and console tail; a capture wider than the
 cap; the gear's text size across a reload; a secret's value absent from the
@@ -859,9 +875,12 @@ once with nothing there to answer, which says so in one line, and once after the
 manifest lands mid-session, which connects it; and a `walkd token --rotate`
 under the running daemon, where the host hands over a token that daemon will
 never accept: the host is asked twice and no more however many refreshes
-follow, and the press says to restart walkd rather than to paste.
+follow, and the press says to restart walkd rather than to paste; and the two
+contexts a press runs in — a worker with the permission and no API, where the
+press connects anyway because the panel asks the host itself, and a panel that
+reloaded with the press's own note set, which finishes it with nothing pressed.
 
-The last three run a browser of their own, because what they are about is a
+The last five run a browser of their own, because what they are about is a
 profile that has never been given anything. Two things they do that nothing else
 in the suite does: they load a copy of `dist` whose manifest asks for
 `nativeMessaging` outright (no automation can press Chrome's permission bubble,
@@ -872,6 +891,9 @@ manifest walkd's own writer produced into `<user-data-dir>/NativeMessagingHosts`
 beside `Default/`, which is the only place a Chromium launched with
 `--user-data-dir` looks. The copy also rewrites the default port to 8761, so a
 profile with nothing in storage cannot go looking for the daemon you are using.
+Two of them go further and take `sendNativeMessage` away from the worker with a
+seam appended to `sw.js`, which is Chrome's stale worker in the one shape no
+automation can produce for itself: the permission held, and no function to call.
 The shipped `dist` keeps the permission optional; the patch is made into a temp
 directory by the test, so it cannot reach a store zip.
 

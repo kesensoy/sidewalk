@@ -87,7 +87,7 @@ product that used it.
 
 ```bash
 npm run build && npm test          # 36 files, 561 unit tests
-npm run e2e                        # 39 Playwright tests, unpacked extension vs fixtures/site
+npm run e2e                        # 41 Playwright tests, unpacked extension vs fixtures/site
 npm run pack:check                 # before a publish: the two packages as npm would send them
 node packages/walkd/bin/walkd.js status
 ```
@@ -95,7 +95,7 @@ node packages/walkd/bin/walkd.js status
 `npm run e2e` starts its own walkd on 8761 and its own fixture site on 9342, so
 **leave the daemon you are using alone** — it is not in the suite's way and the
 suite is not in its. It refuses to start only if something already answers on
-8761. What the thirty-nine tests cover is listed in `MANUAL.md` §7.
+8761. What the forty-one tests cover is listed in `MANUAL.md` §7.
 
 ## Process
 

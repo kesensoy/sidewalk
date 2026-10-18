@@ -1403,8 +1403,18 @@ function run(bin: string, args: string[], env: Record<string, string> = {}): Pro
   });
 }
 
-/** A copy of `dist` these two tests can load: nativeMessaging required, 8761 by default. */
-async function nativeBuild(dir: string) {
+/**
+ * A copy of `dist` these tests can load: nativeMessaging required, 8761 by
+ * default, and — when a test asks for it — a worker that cannot reach the host.
+ *
+ * `blindWorker` is the field case of 2026-10-18 made testable. In the owner's
+ * Chrome, a grant gives the new API only to contexts created after it, so the
+ * service worker that was already running holds the permission and has no
+ * `sendNativeMessage` at all. A seam appended to `sw.js` takes the function away
+ * in exactly that shape, which is the only way to stand the press up against a
+ * stale worker without a real grant to be stale about.
+ */
+async function nativeBuild(dir: string, { blindWorker = false } = {}) {
   await fs.cp(EXT, dir, { recursive: true });
   // The maps are the only files in dist no browser reads, and the rewrite below
   // would leave them describing something else.
@@ -1430,6 +1440,18 @@ async function nativeBuild(dir: string) {
   // One in each bundle: `DEFAULT_PORT`, inlined by esbuild. Any other count and
   // the number means something else somewhere, and this is editing it.
   expect(found, "8760 in the two bundles").toBe(2);
+
+  if (blindWorker) {
+    // Appended, not prepended: esbuild's own "use strict" has to stay the first
+    // thing in the file. `configurable: true` because the API object is the
+    // browser's, and a plain `delete` is not promised to work on it.
+    const sw = path.join(dir, "sw.js");
+    await fs.writeFile(path.join(dir, "sw.js"), `${await fs.readFile(sw, "utf8")}
+// e2e: the worker as Chrome leaves one that was running when the permission was
+// granted — the permission held, and no function to call.
+try { Object.defineProperty(chrome.runtime, "sendNativeMessage", { value: undefined, configurable: true }); } catch (e) { console.error("e2e blind-worker seam:", e); }
+`);
+  }
 }
 
 /**
@@ -1463,10 +1485,10 @@ async function hostManifestInto(udd: string) {
 }
 
 /** A browser of its own, on a profile with nothing in it. */
-async function freshPane(withHost: boolean) {
+async function freshPane(withHost: boolean, opts: { blindWorker?: boolean } = {}) {
   const udd = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-e2e-profile-"));
   const build = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-e2e-build-"));
-  await nativeBuild(build);
+  await nativeBuild(build, opts);
   const manifest = withHost ? await hostManifestInto(udd) : null;
   const fresh = await chromium.launchPersistentContext(udd, {
     channel: "chromium",
@@ -1479,13 +1501,17 @@ async function freshPane(withHost: boolean) {
   sw.on("console", msg => log.push(`[sw:${msg.type()}] ${msg.text()}`));
   const id = sw.url().split("/")[2];
   const panel = await fresh.newPage();
+  // Before the first load, and kept across the reload a press can cause: the
+  // panel's own console is the only witness to which half asked the host.
+  const panelLog: string[] = [];
+  panel.on("console", msg => panelLog.push(`[panel:${msg.type()}] ${msg.text()}`));
   await panel.goto(`chrome-extension://${id}/panel.html`);
   const close = async () => {
     await fresh.close();
     await fs.rm(udd, { recursive: true, force: true });
     await fs.rm(build, { recursive: true, force: true });
   };
-  return { fresh, sw, id, panel, log, manifest, udd, close };
+  return { fresh, sw, id, panel, log, panelLog, manifest, udd, close };
 }
 
 test("a fresh profile with no token asks walkd's host for it and is let in with nothing pasted", async () => {
@@ -1628,5 +1654,67 @@ test("a token the host hands over that walkd refuses is said once, and not asked
     // Hand the daemon's own token back to the file, so nothing after this test
     // inherits a data dir whose file and daemon disagree.
     await fs.writeFile(path.join(dataDir, "token"), `${token}\n`);
+  }
+});
+
+/* --------------------------------------------- the press, from two contexts
+ *
+ * Measured in the owner's own Chrome on 2026-10-18, on the shipped build with a
+ * real grant: `permissions.contains` is true in every context afterwards, and
+ * `chrome.runtime.sendNativeMessage` is **still undefined** in the service
+ * worker and in the panel page that drew the button. A side panel closed and
+ * opened again had the function and reached the host first time. So the browser
+ * gives the new API only to contexts created after the grant, and a press has to
+ * survive the two it starts in being stale.
+ *
+ * Neither of the two tests below can grant anything — no automation can press
+ * Chrome's bubble — so the permission is required in their build and the
+ * staleness is put in by hand, with a seam that takes `sendNativeMessage` away
+ * from the worker and leaves the permission held. That is the field shape
+ * exactly, and it is the half a real grant cannot be automated into.
+ */
+
+test("a worker the browser has not given the API to: the press still connects, through the panel", async () => {
+  const pane = await freshPane(true, { blindWorker: true });
+  try {
+    // The automatic ask cannot work for the same reason the first press could
+    // not, so the pane is where the field report found it.
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 20_000 });
+    expect(pane.log.join("\n")).toContain(`no token through the browser (noApi: the browser has not given this worker the API yet`);
+
+    await pane.panel.locator(".note.token button[data-connect]").click();
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.token")).toHaveCount(0);
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBe(token);
+    // The panel said out loud that it was the half that could ask.
+    expect(pane.panelLog.join("\n")).toContain("the worker cannot reach walkd's host (noApi");
+    console.log(`two-context proof: a worker with the permission and no API said noApi; the panel asked the host and the pane is connected to walkd on ${PORT}`);
+  } finally {
+    await pane.close();
+  }
+});
+
+test("a press that needed a reload finishes itself on the load that follows", async () => {
+  const pane = await freshPane(true, { blindWorker: true });
+  try {
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 20_000 });
+
+    // What the press leaves behind when this page cannot ask: one flag, and a
+    // reload. Written here rather than by a click, because the branch that
+    // writes it is taken only when the page has no API — and a page that has
+    // none cannot be made by any automation, only by a real grant.
+    await pane.panel.evaluate(([key, port]) => chrome.storage.session.set({ [key as string]: { port, at: Date.now() } }), ["walkd:connect-after-reload", PORT] as [string, number]);
+    await pane.panel.reload();
+
+    // Nothing is pressed from here on: the load reads the flag and finishes.
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBe(token);
+    // And the flag is gone, so the next load does not ask the host again.
+    expect(await pane.panel.evaluate(key => chrome.storage.session.get(key as string), "walkd:connect-after-reload")).toEqual({});
+    console.log(`two-context proof: a panel that reloaded with the flag set finished the press by itself and connected to walkd on ${PORT}`);
+  } finally {
+    await pane.close();
   }
 });
