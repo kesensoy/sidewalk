@@ -26,8 +26,8 @@ with nothing pasted and nothing printed.
   On Chrome the panel reloads itself once on that first press: the browser hands
   the native messaging API only to contexts made after the grant, so the page
   that drew the button cannot use it and the load after the reload can. It
-  happens while the pane is locked out and has nothing of yours on screen, and
-  Firefox does not need it.
+  happens once per profile, on a pane walkd has locked out, and Firefox does not
+  need it.
 - **The manifest carries the Web Store public key.** A Load-unpacked build now
   reports the store id `fiibejlikopcaplomihaegmbanhjjmed`, which is the only
   origin the native messaging host admits — so a checkout's panel reaches the

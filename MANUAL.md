@@ -163,9 +163,10 @@ closed and opened again has it and reaches the host first time. No wait fixes a
 context that already exists. So when the page cannot make the call, it writes one
 short-lived note of what the press was about, reloads, and the load that follows
 finishes the press from a context the browser has caught up with. It happens
-once per profile, while the pane is locked out of walkd and has nothing of yours
-on screen to lose. Firefox was measured the other way on the same day — the page
-that is already open gets the function the moment you accept the doorhanger — so
+once per profile, on a pane walkd has locked out; a note typed on a card and not
+yet sent does not survive it. Firefox was measured the other way on the same
+day — the page that is already open gets the function the moment you accept the
+doorhanger — so
 it never reloads. Either way the token is stored by the worker, under the same
 rules, and the pane says the same four things.
 
