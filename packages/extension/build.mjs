@@ -12,6 +12,12 @@ const outdir = arg("--out") ?? "dist";
 const sourcemap = !process.argv.includes("--no-sourcemap");
 mkdirSync(outdir, { recursive: true });
 cpSync("manifest.json", `${outdir}/manifest.json`); cpSync("src/panel.html", `${outdir}/panel.html`); cpSync("src/panel.css", `${outdir}/panel.css`);
+// One empty page, no script, framed by the panel and by nothing else: a frame on
+// it is a context the browser has caught up with, which is how a panel older
+// than a permission grant reaches walkd's host without reloading itself
+// (`src/native.ts` `freshRuntime`). It needs no `web_accessible_resources` — the
+// frame is same-extension — and nothing navigates to it.
+cpSync("src/ask.html", `${outdir}/ask.html`);
 // Not an entry point — it is plain JavaScript, it imports nothing, and in
 // Chrome it returns on its first line. `panel.html` loads it and the Firefox
 // manifest puts it ahead of `sw.js`; `src/firefox.js` says why.

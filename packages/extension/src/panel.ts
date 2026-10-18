@@ -1,7 +1,7 @@
 import type { ConnectAnswer, GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
 import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
-import { type Area, NATIVE_PERMISSION, armConnect, askHost, canAskHere, takeArmed } from "./native.js";
+import { type Area, ASK_TIMEOUT_MS, NATIVE_PERMISSION, armConnect, askHost, canAskHere, freshRuntime, takeArmed } from "./native.js";
 import { versionsDiffer } from "./version.js";
 import { setMarkup } from "./markup.js";
 import { DEFAULT_SCALE, DEFAULT_SHOTS, SCALES, UI_KEY, applyScale, nextScale, shotsOf, type Shots, type Ui } from "./settings.js";
@@ -291,9 +291,20 @@ function flagArea(): Area {
  * `sendNativeMessage` is still undefined in the worker and in this very page —
  * the one that drew the button — while a side panel closed and opened again has
  * it and reaches the host first time. No delay fixes a context that already
- * exists. So when this page cannot ask, it leaves a note and reloads itself,
- * and the load that follows finishes the press. Firefox hands the API to the
- * page that is already open, so it never reloads.
+ * exists.
+ *
+ * So this page makes a context of its own: a hidden frame on an empty page of
+ * ours, whose `chrome.runtime` is built from the permissions as they are now,
+ * and which this page may call through because the two are same-origin
+ * (`native.ts` `freshRuntime`). Nothing is drawn and nothing on the pane moves —
+ * no reload, so the drafts, the ticks, the scroll, the gear and the text size
+ * all stay where they were. Firefox hands the API to the page that is already
+ * open, so it never comes this way at all.
+ *
+ * Only if that frame comes back without the method is the pane reloaded, which
+ * is the honest finish on a browser that behaves differently from the one
+ * measured: a note of what the press was about, and the load that follows picks
+ * it up.
  */
 async function pressConnect(asking: Promise<boolean>) {
   connecting = "asking";
@@ -302,14 +313,21 @@ async function pressConnect(asking: Promise<boolean>) {
   try { granted = (await asking) === true; } catch { granted = false; }
   if (!granted) { connecting = "refused"; paint(); return; }
   const port = state.port ?? DEFAULT_PORT;
-  if (!canAskHere()) {
-    // Not being able to remember it is not a reason to refuse to reload: the
-    // worst a lost flag costs is one more press, on a page that can then ask.
-    await armConnect(flagArea(), port).catch(() => {});
-    location.reload();
+  if (canAskHere()) { paintConnect(await connectThrough(port)); return; }
+  const fresh = await freshRuntime(document).catch(() => null);
+  if (fresh) {
+    // Which half asked is the first thing the field console should say.
+    console.warn("sidewalk: this panel is older than the grant; asked walkd's host through a fresh frame");
+    // The frame stays until the answer or the timeout: one removed mid-call
+    // leaves this await hanging for good (measured).
+    try { paintConnect(await connectThrough(port, fresh.runtime)); }
+    finally { fresh.drop(); }
     return;
   }
-  paintConnect(await connectThrough(port));
+  // Not being able to remember it is not a reason to refuse to reload: the
+  // worst a lost flag costs is one more press, on a page that can then ask.
+  await armConnect(flagArea(), port).catch(() => {});
+  location.reload();
 }
 
 /**
@@ -319,14 +337,19 @@ async function pressConnect(asking: Promise<boolean>) {
  * half that talks to walkd about it. What it cannot always do is reach the host:
  * in Chrome a worker that was running when the permission was granted never
  * gets the API, and it says `noApi` instead of pretending the host is missing.
- * Then this page asks — it is new enough to be allowed to — and hands the answer
- * back for the worker to store by its own rules.
+ * Then the ask happens here instead, through `runtime` — this page's own when it
+ * has the method, and a hidden frame's when it does not — and what the host
+ * gives goes back to the worker to store by its own rules.
+ *
+ * The worker is still asked first on the frame path, and that is not waste: a
+ * profile whose worker has restarted since the grant has the method there, and
+ * then none of the rest of this runs.
  */
-async function connectThrough(port: number): Promise<ConnectAnswer | undefined> {
+async function connectThrough(port: number, runtime = chrome.runtime): Promise<ConnectAnswer | undefined> {
   const first = await send<ConnectAnswer | undefined>({ t: "panel:connect" }).catch(() => undefined);
   if (first && first.end !== "noApi") return first;
   if (first?.reason) console.warn(`sidewalk: the worker cannot reach walkd's host (${first.reason})`);
-  const r = await askHost(port);
+  const r = await askHost(port, ASK_TIMEOUT_MS, runtime);
   if (!r.ok) {
     console.warn(`sidewalk: this panel could not reach walkd's host either (${r.reason}${r.said ? `: ${r.said}` : ""})`);
     return { end: "noHost", port, reason: r.reason };
@@ -363,6 +386,7 @@ function paintConnect(answer: ConnectAnswer | undefined) {
   paint();
   paintConnect(await connectThrough(armed.port));
 })();
+
 
 function paint() {
   const focus = snapshotFocus(document);

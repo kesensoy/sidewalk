@@ -1413,8 +1413,13 @@ function run(bin: string, args: string[], env: Record<string, string> = {}): Pro
  * `sendNativeMessage` at all. A seam appended to `sw.js` takes the function away
  * in exactly that shape, which is the only way to stand the press up against a
  * stale worker without a real grant to be stale about.
+ *
+ * `blindPanel` does the same to `panel.js`, and the two together are the field
+ * shape exactly: the permission held, and no method in either of the contexts a
+ * press runs in. That is the only way to make the panel take its frame path,
+ * since the one thing no automation can do is grant the permission for real.
  */
-async function nativeBuild(dir: string, { blindWorker = false } = {}) {
+async function nativeBuild(dir: string, { blindWorker = false, blindPanel = false } = {}) {
   await fs.cp(EXT, dir, { recursive: true });
   // The maps are the only files in dist no browser reads, and the rewrite below
   // would leave them describing something else.
@@ -1441,16 +1446,20 @@ async function nativeBuild(dir: string, { blindWorker = false } = {}) {
   // the number means something else somewhere, and this is editing it.
   expect(found, "8760 in the two bundles").toBe(2);
 
-  if (blindWorker) {
-    // Appended, not prepended: esbuild's own "use strict" has to stay the first
-    // thing in the file. `configurable: true` because the API object is the
-    // browser's, and a plain `delete` is not promised to work on it.
-    const sw = path.join(dir, "sw.js");
-    await fs.writeFile(path.join(dir, "sw.js"), `${await fs.readFile(sw, "utf8")}
-// e2e: the worker as Chrome leaves one that was running when the permission was
+  // Appended, not prepended: esbuild's own "use strict" has to stay the first
+  // thing in the file. `configurable: true` because the API object is the
+  // browser's, and a plain `delete` is not promised to work on it. The frame
+  // `panel.js` makes gets its own `chrome.runtime`, which this does not touch —
+  // which is the whole point of the frame.
+  const blind = (who: string) => `
+// e2e: this context as Chrome leaves one that existed before the permission was
 // granted — the permission held, and no function to call.
-try { Object.defineProperty(chrome.runtime, "sendNativeMessage", { value: undefined, configurable: true }); } catch (e) { console.error("e2e blind-worker seam:", e); }
-`);
+try { Object.defineProperty(chrome.runtime, "sendNativeMessage", { value: undefined, configurable: true }); } catch (e) { console.error("e2e blind-${who} seam:", e); }
+`;
+  for (const [on, who] of [[blindWorker, "sw"], [blindPanel, "panel"]] as const) {
+    if (!on) continue;
+    const f = path.join(dir, `${who}.js`);
+    await fs.writeFile(f, `${await fs.readFile(f, "utf8")}${blind(who)}`);
   }
 }
 
@@ -1485,7 +1494,7 @@ async function hostManifestInto(udd: string) {
 }
 
 /** A browser of its own, on a profile with nothing in it. */
-async function freshPane(withHost: boolean, opts: { blindWorker?: boolean } = {}) {
+async function freshPane(withHost: boolean, opts: { blindWorker?: boolean; blindPanel?: boolean } = {}) {
   const udd = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-e2e-profile-"));
   const build = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-e2e-build-"));
   await nativeBuild(build, opts);
@@ -1714,6 +1723,48 @@ test("a press that needed a reload finishes itself on the load that follows", as
     // And the flag is gone, so the next load does not ask the host again.
     expect(await pane.panel.evaluate(key => chrome.storage.session.get(key as string), "walkd:connect-after-reload")).toEqual({});
     console.log(`two-context proof: a panel that reloaded with the flag set finished the press by itself and connected to walkd on ${PORT}`);
+  } finally {
+    await pane.close();
+  }
+});
+
+/**
+ * The field shape exactly: the permission held, and no method in either context
+ * a press runs in. What the panel does then is make one — a hidden frame on an
+ * empty page of ours, whose `chrome.runtime` is built from the permissions as
+ * they are now — and ask through that.
+ *
+ * Measured on Chromium 151 before this was written: a same-extension frame
+ * created after a grant has the method, the old parent may call it through
+ * `contentWindow`, a scriptless page is enough, and a frame removed mid-call
+ * leaves the caller's promise hanging for good. What this test holds is the
+ * behaviour the person sees: the pane connects and **nothing on it moves**.
+ */
+test("a panel older than the grant asks through a hidden frame, with no reload and nothing left behind", async () => {
+  const pane = await freshPane(true, { blindWorker: true, blindPanel: true });
+  try {
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 20_000 });
+    // Neither half can reach the host on its own.
+    expect(await pane.panel.evaluate(() => typeof chrome.runtime.sendNativeMessage)).toBe("undefined");
+    expect(await pane.sw.evaluate(() => typeof chrome.runtime.sendNativeMessage)).toBe("undefined");
+
+    // From here on, any navigation of the panel's own frame is the reload this
+    // change exists to avoid.
+    const navigations: string[] = [];
+    pane.panel.on("framenavigated", f => { if (f === pane.panel.mainFrame()) navigations.push(f.url()); });
+
+    await pane.panel.locator(".note.token button[data-connect]").click();
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.token")).toHaveCount(0);
+    expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBe(token);
+    expect(navigations, "the pane did not reload").toEqual([]);
+    expect(pane.panelLog.join("\n")).toContain("this panel is older than the grant; asked walkd's host through a fresh frame");
+    // The frame is taken away once the answer is in, and only then.
+    expect(await pane.panel.evaluate(() => document.querySelectorAll("iframe").length)).toBe(0);
+    // Nothing was left in the flag either: this press never needed the reload.
+    expect(await pane.panel.evaluate(key => chrome.storage.session.get(key as string), "walkd:connect-after-reload")).toEqual({});
+    console.log(`frame proof: a panel and a worker with no method connected to walkd on ${PORT} through a hidden frame — no navigation, no iframe left, no flag`);
   } finally {
     await pane.close();
   }

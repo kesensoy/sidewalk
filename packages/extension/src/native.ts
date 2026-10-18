@@ -103,14 +103,16 @@ export function reasonOf(said: string | undefined): AskReason {
   return "unknown";
 }
 
-/** Whatever the browser threw, as a sentence. */
-function said(e: unknown): string | undefined {
+/** Whatever the browser threw, as a sentence, off the runtime that threw it. */
+function said(e: unknown, runtime: { lastError?: { message?: string } }): string | undefined {
   const m = (e as { message?: unknown } | null)?.message;
   if (typeof m === "string" && m) return m;
   // The callback form's channel for the same text. Read as a fallback because
   // the promise form is what is called below, and a browser that rejects with
-  // something that is not an Error still sets this.
-  const last = (chrome.runtime as { lastError?: { message?: string } }).lastError?.message;
+  // something that is not an Error still sets this. Off the same object the call
+  // was made on: a frame's runtime has its own `lastError`, and the parent's
+  // would be about something else entirely.
+  const last = runtime.lastError?.message;
   return typeof last === "string" && last ? last : undefined;
 }
 
@@ -136,19 +138,24 @@ export async function hasNativePermission(): Promise<boolean> {
  * else's daemon. It would be sent to a daemon that never issued it, refused,
  * and the person would be told to paste a token the pane had already quietly
  * replaced.
+ *
+ * `runtime` is which `chrome.runtime` to ask through, and it is this context's
+ * own unless a caller hands over another: a panel older than the permission
+ * grant has no method on its own and borrows one from a frame it makes
+ * (`freshRuntime`). Everything else about the call is the same.
  */
-export async function askHost(port: number, timeoutMs = ASK_TIMEOUT_MS): Promise<Asked> {
-  // Not `try { chrome.runtime.sendNativeMessage(...) } catch`: without the
-  // permission the function is not there at all (measured), so the absence is
-  // the question, and asking it costs nothing.
-  const send = (chrome.runtime as { sendNativeMessage?: (host: string, message: unknown) => Promise<unknown> }).sendNativeMessage;
+export async function askHost(port: number, timeoutMs = ASK_TIMEOUT_MS, runtime: typeof chrome.runtime = chrome.runtime): Promise<Asked> {
+  // Not `try { runtime.sendNativeMessage(...) } catch`: without the permission
+  // the function is not there at all (measured), so the absence is the
+  // question, and asking it costs nothing.
+  const send = (runtime as { sendNativeMessage?: (host: string, message: unknown) => Promise<unknown> }).sendNativeMessage;
   if (typeof send !== "function") return { ok: false, reason: "noApi" };
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   type Settled = { reply: unknown } | { failed: unknown } | { late: true };
   const settled = await Promise.race<Settled>([
     (async () => {
-      try { return { reply: await send.call(chrome.runtime, HOST_NAME, ASK) }; }
+      try { return { reply: await send.call(runtime, HOST_NAME, ASK) }; }
       catch (e) { return { failed: e }; }
     })(),
     new Promise<Settled>(r => { timer = setTimeout(() => r({ late: true }), timeoutMs); }),
@@ -157,7 +164,7 @@ export async function askHost(port: number, timeoutMs = ASK_TIMEOUT_MS): Promise
 
   if ("late" in settled) return { ok: false, reason: "timeout" };
   if ("failed" in settled) {
-    const words = said(settled.failed);
+    const words = said(settled.failed, runtime);
     return { ok: false, reason: reasonOf(words), said: words };
   }
   const r = settled.reply as { ok?: unknown; port?: unknown; token?: unknown; reason?: unknown } | null | undefined;
@@ -230,6 +237,42 @@ export function adopt(answer: Asked, now: PaneNow): Asked {
  */
 export const canAskHere = (): boolean =>
   typeof (chrome.runtime as { sendNativeMessage?: unknown }).sendNativeMessage === "function";
+
+/** The page the frame below loads: empty, scriptless, and not reachable by anything else. */
+export const ASK_PAGE = "ask.html";
+
+/**
+ * A context the browser has caught up with, made inside this page.
+ *
+ * Chrome hands a newly granted permission's API only to contexts created after
+ * the grant, and this page is older than it (measured 2026-10-18). A frame on
+ * one of our own pages is a new context (measured 2026-10-18, Chromium 151): it
+ * builds its own `chrome.runtime`, with the method, and this page may call it
+ * through `contentWindow` because the frame is same-origin. Hidden, so nothing
+ * is drawn; kept until the answer is in, because a frame removed mid-call
+ * leaves the caller's promise hanging forever (measured).
+ *
+ * Why the method and not the whole permission: Chromium does push a permission
+ * update into contexts that already exist — a top-level API like `chrome.idle`
+ * appears in the running worker and the open page — but it does not add a method
+ * back onto an API object that has already been instantiated. Every context here
+ * touches `chrome.runtime` in its first tick, so its `runtime` is built without
+ * `sendNativeMessage` and stays that way. A new frame builds a new one.
+ */
+export async function freshRuntime(doc: Document): Promise<{ runtime: typeof chrome.runtime; drop: () => void } | null> {
+  const f = doc.createElement("iframe");
+  f.hidden = true;
+  f.setAttribute("aria-hidden", "true");
+  f.tabIndex = -1;
+  f.src = chrome.runtime.getURL(ASK_PAGE);
+  const loaded = new Promise<void>(r => { f.onload = () => r(); f.onerror = () => r(); });
+  doc.body.append(f);
+  await loaded;
+  const runtime = (f.contentWindow as (Window & { chrome?: { runtime?: typeof chrome.runtime } }) | null)?.chrome?.runtime;
+  const drop = () => f.remove();
+  if (!runtime || typeof (runtime as { sendNativeMessage?: unknown }).sendNativeMessage !== "function") { drop(); return null; }
+  return { runtime, drop };
+}
 
 /** What the worker says about itself when the permission is held and the API is not there yet. */
 export const STALE_WORKER = "the browser has not given this worker the API yet; it arrives after the worker restarts";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ASK, ASK_TIMEOUT_MS, CONNECT_FLAG, CONNECT_FLAG_MS, HOST_NAME, NATIVE_PERMISSION, STALE_WORKER, adopt, armConnect, armedFlag, askHost, canAskHere, hasNativePermission, reasonOf, takeArmed, type Area, type Asked } from "./native.js";
+import { ASK, ASK_PAGE, ASK_TIMEOUT_MS, CONNECT_FLAG, CONNECT_FLAG_MS, HOST_NAME, NATIVE_PERMISSION, STALE_WORKER, adopt, armConnect, armedFlag, askHost, canAskHere, hasNativePermission, reasonOf, takeArmed, type Area, type Asked } from "./native.js";
 
 /**
  * The host is a program the browser launches, so there is nothing of it to run
@@ -106,6 +106,31 @@ describe("askHost", () => {
     expect(ASK_TIMEOUT_MS).toBe(5_000);
   });
 
+  /**
+   * The panel that drew the Connect button is older than the grant and has no
+   * method of its own, so it borrows one from a hidden frame (`freshRuntime`)
+   * and hands it here. The call and every rule about the answer are the same;
+   * only the object the method hangs off changes — and `lastError` is read off
+   * that same object, because the parent's is about something else entirely.
+   */
+  it("asks through whatever runtime it is handed, and reads that one's lastError", async () => {
+    // This context has no method at all: the real field shape.
+    stub({ api: false });
+    const calls: { host: string; message: unknown }[] = [];
+    const frame = {
+      sendNativeMessage: (host: string, message: unknown) => { calls.push({ host, message }); return Promise.resolve({ ok: true, port: 8761, token: "through-the-frame" }); },
+    } as unknown as typeof chrome.runtime;
+    expect(await askHost(8761)).toEqual({ ok: false, reason: "noApi" });
+    expect(await askHost(8761, ASK_TIMEOUT_MS, frame)).toEqual({ ok: true, port: 8761, token: "through-the-frame" });
+    expect(calls).toEqual([{ host: HOST_NAME, message: ASK }]);
+
+    const failing = {
+      sendNativeMessage: () => Promise.reject("not an Error at all"),
+      lastError: { message: "Specified native messaging host not found." },
+    } as unknown as typeof chrome.runtime;
+    expect(await askHost(8761, ASK_TIMEOUT_MS, failing)).toEqual({ ok: false, reason: "noHost", said: "Specified native messaging host not found." });
+  });
+
   it("reads the browser's refusal off the rejection, and off lastError when there is nothing else", async () => {
     stub({ fail: new Error("Specified native messaging host not found.") });
     expect(await askHost(8761)).toEqual({ ok: false, reason: "noHost", said: "Specified native messaging host not found." });
@@ -200,6 +225,12 @@ describe("canAskHere", () => {
     expect(canAskHere()).toBe(false);
     stub({ permission: false, api: true });
     expect(canAskHere()).toBe(true);
+  });
+
+  it("frames a page of ours that build.mjs copies", () => {
+    // `build.mjs` copies it beside `panel.html`; a rename here without one there
+    // is a frame that loads nothing and a press that falls back to a reload.
+    expect(ASK_PAGE).toBe("ask.html");
   });
 
   it("names what a stale worker should say out loud", () => {
