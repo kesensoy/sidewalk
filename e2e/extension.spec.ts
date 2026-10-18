@@ -1076,8 +1076,11 @@ test("a request without the token is refused, and the pane says the daemon needs
   // /health stays open, which is what lets the pane know it is there at all.
   expect((await (await fetch(`${BASE}/health`)).json()).auth).toBe("token");
 
-  // Now the pane, holding a token that is not this daemon's.
+  // Now the pane, holding a token that is not this daemon's. The gear starts
+  // closed on purpose: what is being shown here is that a refusal no longer
+  // opens it, and an earlier test may have left it open.
   const sw = await worker();
+  await closeGear(panel);
   await sw.evaluate(() => chrome.storage.local.set({ "walkd:token": "not-this-daemons-token" }));
   await expect(panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 15_000 });
   // One slab: the sentence, Connect, and the way to the other door. No command
@@ -1244,6 +1247,12 @@ async function openGear(panel: Page) {
   await expect(panel.locator("#prefs #token")).toBeVisible();
 }
 
+/** The gear, closed, the same way: the panel page outlives every test here. */
+async function closeGear(panel: Page) {
+  if (await panel.locator("#prefs").isVisible()) await panel.locator("#settings").click();
+  await expect(panel.locator("#prefs #token")).toBeHidden();
+}
+
 /**
  * The owner, 2026-10-06: "i had copied something else and noticed when i saved my
  * wrong token it just says saved in green like no actual connection check /
@@ -1305,7 +1314,11 @@ test("a Save with nothing answering on the port says so in no colour at all, and
   await expect(panel.locator("#token-said")).toBeHidden();
 
   // And a Save against that port has nothing to ask, which it must not dress up
-  // as a verdict on the token.
+  // as a verdict on the token. The token goes in again first: the one that
+  // worked above left the field the moment walkd accepted it, and a Save on an
+  // untouched field is a no-op by design.
+  await expect(panel.locator("#prefs #token")).toHaveValue("");
+  await panel.locator("#prefs #token").fill(token);
   await panel.locator("#token-save").click();
   await expect(panel.locator("#token-said")).toHaveText(`No walkd on ${NEVER_PORT}.`, { timeout: 15_000 });
   await expect(panel.locator("#token-said")).toHaveClass("");
