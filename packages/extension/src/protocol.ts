@@ -12,7 +12,19 @@ export type PanelToSw =
   | { t: "panel:submit"; walk: string; verdict: VerdictDraft } // sw captures + enqueues
   | { t: "panel:seen"; walk: string; seq: number }
   | { t: "panel:token" }                                       // → sw re-reads the token and answers TokenAnswer
-  | { t: "panel:connect" };                                    // → sw asks walkd's native messaging host for the token
+  /**
+   * Connect was pressed. → ConnectAnswer.
+   *
+   * `asked` is the host's answer when the **panel** did the asking, which is
+   * the ordinary case in Chrome: the browser hands the native messaging API
+   * only to contexts created after the grant, so the worker that was already
+   * running cannot make the call and the panel (reloaded, and therefore new)
+   * can. Without it the worker asks for itself, which is the Firefox path and
+   * the path of any context that has held the permission all along. Either
+   * way the token reaches storage through one set of rules in the worker, and
+   * the pane is told how the daemon took it.
+   */
+  | { t: "panel:connect"; asked?: { port: number; token: string } };
 
 export type VerdictDraft = Omit<VerdictInput, "nonce" | "context">;
 
@@ -66,11 +78,14 @@ export type TokenAnswer = { check: Extract<TokenCheck, "connected" | "refused" |
  * - `nothingToSay`: the press changed nothing worth a line — the pane was
  *   already in on a token of its own, or nothing is answering on the port at
  *   all, and the connection line is the whole story either way.
+ * - `noApi`: this worker cannot reach the host, because the browser has not
+ *   given it the API. Not a failure and never a line: it is the worker telling
+ *   the panel to ask for itself, from a context new enough to be allowed to.
  *
  * `reason` is `native.ts`'s own word, plus whatever the browser or the host
  * said, for the console and nowhere else.
  */
-export type ConnectEnd = "connected" | "refusedToken" | "noHost" | "nothingToSay";
+export type ConnectEnd = "connected" | "refusedToken" | "noHost" | "nothingToSay" | "noApi";
 export type ConnectAnswer = { end: ConnectEnd; port: number; reason?: string };
 
 export type SwToPanel =

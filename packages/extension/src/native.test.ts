@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ASK, ASK_TIMEOUT_MS, HOST_NAME, NATIVE_PERMISSION, adopt, askHost, hasNativePermission, reasonOf, type Asked } from "./native.js";
+import { ASK, ASK_TIMEOUT_MS, CONNECT_FLAG, CONNECT_FLAG_MS, HOST_NAME, NATIVE_PERMISSION, STALE_WORKER, adopt, armConnect, armedFlag, askHost, canAskHere, hasNativePermission, reasonOf, takeArmed, type Area, type Asked } from "./native.js";
 
 /**
  * The host is a program the browser launches, so there is nothing of it to run
@@ -182,5 +182,83 @@ describe("adopt", () => {
   it("ends the episode when the host's token is the one already refused", () => {
     const r = adopt(good, now({ token: good.token, needsToken: true }));
     expect(r).toEqual({ ok: false, reason: "refusedToken", said: "the host's token is the one already refused" });
+  });
+});
+
+/**
+ * The field case this whole second path exists for, measured in the owner's own
+ * Chrome on 2026-10-18: after a real grant on the real store build,
+ * `permissions.contains` is true in every context while
+ * `chrome.runtime.sendNativeMessage` is still undefined in the service worker
+ * and in the panel page that drew the button. A side panel closed and opened
+ * again had it. So holding the permission is not the question — this is, asked
+ * per context.
+ */
+describe("canAskHere", () => {
+  it("is about this context and not about the permission", () => {
+    stub({ permission: true, api: false });
+    expect(canAskHere()).toBe(false);
+    stub({ permission: false, api: true });
+    expect(canAskHere()).toBe(true);
+  });
+
+  it("names what a stale worker should say out loud", () => {
+    // "no API" and "no host" are otherwise the same word to whoever is reading
+    // the console, and they want opposite things of them.
+    expect(STALE_WORKER).toContain("after the worker restarts");
+  });
+});
+
+/** A `chrome.storage` area as a plain object, with its calls counted. */
+function area(seed: Record<string, unknown> = {}) {
+  const held: Record<string, unknown> = { ...seed };
+  const calls: string[] = [];
+  const a: Area = {
+    get: async k => { calls.push(`get ${k}`); return k in held ? { [k]: held[k] } : {}; },
+    set: async items => { calls.push(`set ${Object.keys(items).join(",")}`); Object.assign(held, items); },
+    remove: async k => { calls.push(`remove ${k}`); delete held[k]; },
+  };
+  return { a, held, calls };
+}
+
+describe("the flag a press leaves behind when the panel has to reload", () => {
+  it("carries the port it was about and the time it was made", async () => {
+    const { a, held } = area();
+    await armConnect(a, 8761, 1000);
+    expect(held[CONNECT_FLAG]).toEqual({ port: 8761, at: 1000 });
+    expect(CONNECT_FLAG).toBe("walkd:connect-after-reload");
+  });
+
+  it("is read once and cleared, whether or not it was any use", async () => {
+    const { a, held, calls } = area({ [CONNECT_FLAG]: { port: 8761, at: 1000 } });
+    expect(await takeArmed(a, 1500)).toEqual({ port: 8761, at: 1000 });
+    expect(held[CONNECT_FLAG]).toBeUndefined();
+    expect(calls).toEqual([`get ${CONNECT_FLAG}`, `remove ${CONNECT_FLAG}`]);
+    // A second load has nothing to act on, and nothing to clear.
+    const again = area();
+    expect(await takeArmed(again.a, 1500)).toBeNull();
+    expect(again.calls).toEqual([`get ${CONNECT_FLAG}`]);
+  });
+
+  it("will not make a panel opened tomorrow ask the host out of nowhere", async () => {
+    const stale = area({ [CONNECT_FLAG]: { port: 8761, at: 1000 } });
+    expect(await takeArmed(stale.a, 1000 + CONNECT_FLAG_MS + 1)).toBeNull();
+    // Cleared all the same: a flag nobody can use is not a flag to keep.
+    expect(stale.held[CONNECT_FLAG]).toBeUndefined();
+    expect(CONNECT_FLAG_MS).toBe(10_000);
+  });
+
+  it("takes nothing it cannot read", () => {
+    for (const raw of [undefined, null, 1, "x", {}, { port: 8761 }, { at: 1000 }, { port: "8761", at: 1000 }, { port: 8761, at: 1.5 }]) {
+      expect(armedFlag(raw, 1500), JSON.stringify(raw ?? null)).toBeNull();
+    }
+    // A clock that moved backwards under a stored flag is not ours to act on.
+    expect(armedFlag({ port: 8761, at: 50_000 }, 1500)).toBeNull();
+    expect(armedFlag({ port: 8761, at: 1500 }, 1500)).toEqual({ port: 8761, at: 1500 });
+  });
+
+  it("is never a throw, whatever storage does", async () => {
+    const broken: Area = { get: async () => { throw new Error("no storage"); }, set: async () => {}, remove: async () => {} };
+    expect(await takeArmed(broken, 1500)).toBeNull();
   });
 });

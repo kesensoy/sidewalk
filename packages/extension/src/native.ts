@@ -208,3 +208,77 @@ export function adopt(answer: Asked, now: PaneNow): Asked {
   if (now.token === answer.token) return { ok: false, reason: "refusedToken", said: "the host's token is the one already refused" };
   return answer;
 }
+
+/**
+ * Can the context this is running in reach the host at all?
+ *
+ * Measured in the owner's own Chrome on 2026-10-18, after a real grant on the
+ * real store build: `chrome.permissions.contains` says true in every context,
+ * while `chrome.runtime.sendNativeMessage` is **still undefined** in the service
+ * worker and in the panel page that drew the button. A side panel closed and
+ * opened again had the function and reached the host on its first call. So
+ * Chrome hands the new API only to contexts created after the grant, and no
+ * delay fixes a context that already exists.
+ *
+ * That is why holding the permission is not the question a press can act on.
+ * The question is this one, asked per context: the panel asks it of itself and
+ * reloads when the answer is no, and the worker answers it for its own context
+ * so a press is never left waiting on a worker the browser has not caught up
+ * with. (Firefox was measured the other way on the same day: a page that was
+ * already open had the function the moment the doorhanger was accepted, so it
+ * takes the direct path and never reloads.)
+ */
+export const canAskHere = (): boolean =>
+  typeof (chrome.runtime as { sendNativeMessage?: unknown }).sendNativeMessage === "function";
+
+/** What the worker says about itself when the permission is held and the API is not there yet. */
+export const STALE_WORKER = "the browser has not given this worker the API yet; it arrives after the worker restarts";
+
+/**
+ * The one thing a press leaves behind when the panel has to reload to finish it.
+ *
+ * `{port, at}` and nothing else: the port the press was about, so a reload that
+ * lands after the person has pointed the pane somewhere else does not ask about
+ * the wrong daemon, and the time, so a flag left by a press that never finished
+ * cannot make a panel opened tomorrow ask the host out of nowhere. It is read
+ * once and cleared whether or not it is used.
+ */
+export const CONNECT_FLAG = "walkd:connect-after-reload";
+/** How long a press stays worth finishing. A reload is a second or two; this is room. */
+export const CONNECT_FLAG_MS = 10_000;
+export type Armed = { port: number; at: number };
+
+/** The smallest piece of `chrome.storage` this needs, so a test can hand it a plain object. */
+export type Area = {
+  get: (key: string) => Promise<Record<string, unknown>>;
+  set: (items: Record<string, unknown>) => Promise<void>;
+  remove: (key: string) => Promise<void>;
+};
+
+/** A stored flag, if it is one and it is still fresh. */
+export function armedFlag(raw: unknown, now: number): Armed | null {
+  const f = raw as Partial<Armed> | undefined;
+  if (!f || typeof f !== "object") return null;
+  if (!Number.isInteger(f.port) || !Number.isInteger(f.at)) return null;
+  if (f.at! > now + CONNECT_FLAG_MS) return null;                  // a clock that moved: not ours to act on
+  if (now - f.at! > CONNECT_FLAG_MS) return null;
+  return { port: f.port!, at: f.at! };
+}
+
+/** Say that the reload about to happen is the second half of a press. */
+export async function armConnect(area: Area, port: number, now = Date.now()): Promise<void> {
+  await area.set({ [CONNECT_FLAG]: { port, at: now } satisfies Armed });
+}
+
+/**
+ * Was this panel load the second half of a press? Reads and clears in one go,
+ * so a flag can never be acted on twice — and clears it even when it is too old
+ * to use.
+ */
+export async function takeArmed(area: Area, now = Date.now()): Promise<Armed | null> {
+  let raw: unknown;
+  try { raw = (await area.get(CONNECT_FLAG))[CONNECT_FLAG]; } catch { return null; }
+  if (raw === undefined) return null;
+  await area.remove(CONNECT_FLAG).catch(() => {});
+  return armedFlag(raw, now);
+}

@@ -1,7 +1,7 @@
 import type { ConnectAnswer, GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
 import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
-import { NATIVE_PERMISSION } from "./native.js";
+import { type Area, NATIVE_PERMISSION, armConnect, askHost, canAskHere, takeArmed } from "./native.js";
 import { versionsDiffer } from "./version.js";
 import { setMarkup } from "./markup.js";
 import { DEFAULT_SCALE, DEFAULT_SHOTS, SCALES, UI_KEY, applyScale, nextScale, shotsOf, type Shots, type Ui } from "./settings.js";
@@ -268,6 +268,16 @@ let openedForToken = false;
 let connecting: Connecting | undefined;
 
 /**
+ * Where the press's one piece of state lives across the reload below:
+ * `storage.session` where there is one, so it cannot outlive the browser, and
+ * `storage.local` otherwise. The flag carries its own age either way.
+ */
+function flagArea(): Area {
+  const area = (chrome.storage as { session?: chrome.storage.StorageArea }).session ?? chrome.storage.local;
+  return { get: k => area.get(k), set: items => area.set(items), remove: k => area.remove(k) };
+}
+
+/**
  * Connect, pressed.
  *
  * The permission request is made by the caller, synchronously inside the click
@@ -275,8 +285,15 @@ let connecting: Connecting | undefined;
  * `permissions.request` outside a user action, and Firefox says so in as many
  * words. Everything after it is ordinary async work.
  *
- * The ask itself is the worker's, so that a token the person did not type is
- * stored by the same code path as one they pasted.
+ * Then the awkward fact, measured in the owner's own Chrome on 2026-10-18 on
+ * the real store build: the browser gives the new API only to contexts created
+ * **after** the grant. `permissions.contains` says true everywhere, and
+ * `sendNativeMessage` is still undefined in the worker and in this very page —
+ * the one that drew the button — while a side panel closed and opened again has
+ * it and reaches the host first time. No delay fixes a context that already
+ * exists. So when this page cannot ask, it leaves a note and reloads itself,
+ * and the load that follows finishes the press. Firefox hands the API to the
+ * page that is already open, so it never reloads.
  */
 async function pressConnect(asking: Promise<boolean>) {
   connecting = "asking";
@@ -284,19 +301,68 @@ async function pressConnect(asking: Promise<boolean>) {
   let granted = false;
   try { granted = (await asking) === true; } catch { granted = false; }
   if (!granted) { connecting = "refused"; paint(); return; }
-  const answer = await send<ConnectAnswer | undefined>({ t: "panel:connect" }).catch(() => undefined);
+  const port = state.port ?? DEFAULT_PORT;
+  if (!canAskHere()) {
+    // Not being able to remember it is not a reason to refuse to reload: the
+    // worst a lost flag costs is one more press, on a page that can then ask.
+    await armConnect(flagArea(), port).catch(() => {});
+    location.reload();
+    return;
+  }
+  paintConnect(await connectThrough(port));
+}
+
+/**
+ * The worker first, this page second.
+ *
+ * The worker is where a token is stored, so it is asked first and it is the
+ * half that talks to walkd about it. What it cannot always do is reach the host:
+ * in Chrome a worker that was running when the permission was granted never
+ * gets the API, and it says `noApi` instead of pretending the host is missing.
+ * Then this page asks — it is new enough to be allowed to — and hands the answer
+ * back for the worker to store by its own rules.
+ */
+async function connectThrough(port: number): Promise<ConnectAnswer | undefined> {
+  const first = await send<ConnectAnswer | undefined>({ t: "panel:connect" }).catch(() => undefined);
+  if (first && first.end !== "noApi") return first;
+  if (first?.reason) console.warn(`sidewalk: the worker cannot reach walkd's host (${first.reason})`);
+  const r = await askHost(port);
+  if (!r.ok) {
+    console.warn(`sidewalk: this panel could not reach walkd's host either (${r.reason}${r.said ? `: ${r.said}` : ""})`);
+    return { end: "noHost", port, reason: r.reason };
+  }
+  return send<ConnectAnswer | undefined>({ t: "panel:connect", asked: { port: r.port, token: r.token } }).catch(() => undefined);
+}
+
+/** The one line a press earns, and the word behind it for whoever is looking. */
+function paintConnect(answer: ConnectAnswer | undefined) {
   // The reason never reaches the pane: four of the likeliest mistakes report
   // the same sentence to the browser, so there is one line per end and the word
-  // behind it goes here for whoever is looking.
+  // behind it goes to the console.
   if (answer?.reason) console.warn(`sidewalk: Connect ended in ${answer.end} (${answer.reason})`);
+  if (!answer) console.warn("sidewalk: the worker did not answer the Connect press");
   // `connected` and `nothingToSay` leave the connection line to speak for
   // itself — in the first it has just turned green, and in the second nothing
   // the press did is worth a line. A worker that never answered is the same
   // dead end as a host that did not.
   connecting = !answer ? "failed" : answer.end === "refusedToken" ? "stale" : answer.end === "noHost" ? "failed" : undefined;
-  if (!answer) console.warn("sidewalk: the worker did not answer the Connect press");
   paint();
 }
+
+/**
+ * The second half of a press that needed a reload to get the API.
+ *
+ * Read once and cleared, and only acted on while it is fresh, so a flag left by
+ * a press that never finished cannot make a panel opened tomorrow ask the host
+ * out of nowhere.
+ */
+(async () => {
+  const armed = await takeArmed(flagArea()).catch(() => null);
+  if (!armed) return;
+  connecting = "asking";
+  paint();
+  paintConnect(await connectThrough(armed.port));
+})();
 
 function paint() {
   const focus = snapshotFocus(document);
@@ -335,7 +401,12 @@ function paint() {
   // whatever the Connect button was saying: a press that worked has the
   // connection line to speak for it, and a press that did not has nothing left
   // to be about.
-  if (!state.needsToken) connecting = undefined;
+  //
+  // Strictly `=== false`, which is the worker having said so. The pane paints
+  // once before any worker has answered — `needsToken` absent — and that paint
+  // must not take the line off a press this panel is in the middle of, which is
+  // exactly where a reloaded panel starts.
+  if (state.needsToken === false) connecting = undefined;
   // The token notice outranks the version one: until the daemon lets the pane
   // in, nothing it might say about versions can be acted on.
   setMarkup(document.getElementById("notice")!, state.needsToken

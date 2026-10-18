@@ -12,7 +12,7 @@ import { replayLate } from "./late.js";
 import { unseenCount } from "./replies.js";
 import { DEFAULT_PORT, PORT_KEY, TOKEN_KEY, connectedKey, daemonBase, parsePort, parseToken } from "./port.js";
 import { UI_KEY, shotsOf } from "./settings.js";
-import { type Asked, adopt, askHost, hasNativePermission } from "./native.js";
+import { type Asked, STALE_WORKER, adopt, askHost, hasNativePermission } from "./native.js";
 import { type ConnectAnswer, type ConsoleEntry, type GoResult, type PanelToSw, type SwState, type SwToContent, type TokenAnswer, type WalkView } from "./protocol.js";
 
 const link = new DaemonLink(daemonBase(DEFAULT_PORT));
@@ -210,28 +210,54 @@ function offerToken(): void {
   void takeToken();
 }
 
+/** What the pane holds right now, for `adopt`. Read after an ask, never before it. */
+const paneNow = () => ({ port: currentPort, token: currentToken, needsToken });
+
+/**
+ * This worker asks the host itself.
+ *
+ * It is the path that works whenever the browser has given *this* context the
+ * API: Firefox after a grant, and any worker started since one. In Chrome a
+ * worker that was already running when the permission was granted is not that
+ * context (measured 2026-10-18, `native.ts` `canAskHere`), and the answer says
+ * so rather than pretending the host is missing — the panel then asks for
+ * itself and hands the answer to `storeAsked` below.
+ */
+async function takeToken(): Promise<Asked> {
+  if (!(await hasNativePermission())) return { ok: false, reason: "noApi", said: "the permission is not held" };
+  const port = currentPort;
+  const answer = await askHost(port);
+  // Permission held and no function: the browser has not caught this worker up.
+  // Said out loud, because "no API" and "no host" are the same word otherwise
+  // and they want opposite things of whoever is reading the console.
+  if (!answer.ok && answer.reason === "noApi") return said({ ok: false, reason: "noApi", said: STALE_WORKER });
+  // The host is a process the browser launches, so the pane can have moved to
+  // another daemon or been handed a working token by a paste while it was
+  // answering. `adopt` says which of those drops the answer, and why.
+  return store(adopt(answer, paneNow()));
+}
+
+/** The host's answer as the panel got it, through the same rules as this worker's own. */
+const storeAsked = (port: number, token: string): Promise<Asked> =>
+  store(adopt({ ok: true, port, token }, paneNow()));
+
+/** One warn for every reason a token did not land, whichever half did the asking. */
+function said(r: Asked): Asked {
+  if (!r.ok) console.warn(`walkd: no token through the browser (${r.reason}${r.said ? `: ${r.said}` : ""}). The gear still takes a pasted one.`);
+  return r;
+}
+
 /**
  * The one place a token the person did not type is written.
  *
- * The permission is the pane's half (it needs a click, and only a page has
- * one); the ask is this worker's, so the token reaches storage by one code path
- * whether it came from the gear or from the host. Every failure is a line in
- * the console and nothing else: the pane already says what to do without one,
- * and `native.ts` cannot tell four of the likeliest mistakes apart anyway.
+ * Both halves come through here — this worker's own ask and the panel's — so the
+ * token reaches storage by one code path however it was fetched, and the gear's
+ * paste is the only other writer. Every failure is a line in the console and
+ * nothing else: the pane already says what to do without one, and `native.ts`
+ * cannot tell four of the likeliest mistakes apart anyway.
  */
-async function takeToken(): Promise<Asked> {
-  if (!(await hasNativePermission())) return { ok: false, reason: "noApi" };
-  const port = currentPort;
-  const answer = await askHost(port);
-  // What the pane holds *now*, read after the ask and not before it: the host is
-  // a process the browser launches, so the pane can have moved to another daemon
-  // or been handed a working token by a paste while it was answering. `adopt`
-  // says which of those drops the answer, and why.
-  const r = adopt(answer, { port: currentPort, token: currentToken, needsToken });
-  if (!r.ok) {
-    console.warn(`walkd: no token through the browser (${r.reason}${r.said ? `: ${r.said}` : ""}). The gear still takes a pasted one.`);
-    return r;
-  }
+async function store(r: Asked): Promise<Asked> {
+  if (!r.ok) return said(r);
   try {
     await storage.set(TOKEN_KEY, r.token);
   } catch (e) {
@@ -241,7 +267,7 @@ async function takeToken(): Promise<Asked> {
     return { ok: false, reason: "unknown" };
   }
   adopted = true;
-  console.debug(`walkd: the native messaging host handed over the token for ${port}`);
+  console.debug(`walkd: the native messaging host handed over the token for ${r.port}`);
   // The `onChanged` listener would do this, and this does not wait for it. Two
   // reasons, and the second is the one that bites: a storage write of a value
   // that has not changed reports no event at all (Chromium), so a pane that
@@ -257,32 +283,41 @@ async function takeToken(): Promise<Asked> {
  * The person pressed Connect, and the browser has just let this extension talk
  * to the host. Ask now, whatever this episode has already tried.
  *
- * The answer is the daemon's verdict and not the storage write. Storing a token
- * is not evidence that it works — which is the lesson the gear's Save already
- * learned ("i had copied something else and noticed when i saved my wrong token
- * it just says saved in green") — so this takes the same path Save takes and
- * waits for what walkd makes of it. A rotate under a running daemon is exactly
- * the case: the host hands over a token that daemon will never accept, and the
- * pane has to say so rather than fall quiet.
+ * `asked` is the host's answer when the panel did the asking — the ordinary
+ * Chrome case, where the browser gives the API only to contexts made after the
+ * grant and this worker is not one of them. With no `asked` this worker asks for
+ * itself, and says `noApi` rather than nothing when it turns out it cannot.
  */
-async function connectNow(): Promise<ConnectAnswer> {
+async function connectNow(asked?: { port: number; token: string }): Promise<ConnectAnswer> {
   // A press is its own episode, and it consumes it: the automatic path must not
   // then ask a second time on top of this one.
   askEpisode++;
   askedIn = askEpisode;
-  let r = await takeToken();
-  // The grant happened a moment ago in the panel, and this worker is another
-  // context. Both browsers hand the new API to contexts that are already
-  // running — measured on Firefox, and a grant does not restart the worker in
-  // Chrome either — but one short retry is cheaper than telling somebody to
-  // press a button twice.
-  if (!r.ok && r.reason === "noApi") {
-    await sleep(250);
-    r = await takeToken();
-  }
+  if (!asked) return verdict(await takeToken());
+  // The panel did the asking. Its answer is checked and stored by the same
+  // rules, and a panel that hands over nothing usable is a bug here, not
+  // something to write into storage.
+  const token = parseToken(asked.token);
+  if (!token || !Number.isInteger(asked.port)) return verdict({ ok: false, reason: "unknown", said: "the panel handed over nothing usable" });
+  return verdict(await storeAsked(asked.port, token));
+}
+
+/**
+ * What the pane is told about a press.
+ *
+ * The daemon's verdict and not the storage write: storing a token is not
+ * evidence that it works, which is the lesson the gear's Save already learned
+ * ("i had copied something else and noticed when i saved my wrong token it just
+ * says saved in green"). So a token that landed is put to the same question Save
+ * puts it to, and the answer carries what walkd made of it.
+ */
+async function verdict(r: Asked): Promise<ConnectAnswer> {
   const port = currentPort || DEFAULT_PORT;
   if (!r.ok) {
     const reason = `${r.reason}${r.said ? `: ${r.said}` : ""}`;
+    // `noApi` is not a failure and gets no line: it is this worker telling the
+    // panel to ask for itself, from a context the browser has caught up with.
+    if (r.reason === "noApi") return { end: "noApi", port, reason };
     // `refusedToken` is the host answering with a token this daemon is already
     // refusing: the pane says that in its own line, because the way out is a
     // walkd restart and not a paste. `superseded` is the pane already being in
@@ -656,7 +691,7 @@ chrome.runtime.onMessage.addListener((msg: PanelToSw, _sender, reply) => {
         return;
       }
       if (msg.t === "panel:token") { reply(await checkToken()); return; }
-      if (msg.t === "panel:connect") { reply(await connectNow()); return; }
+      if (msg.t === "panel:connect") { reply(await connectNow(msg.asked)); return; }
       if (msg.t === "panel:go") { reply(await goOnce(goKey(msg.walk, msg.itemId))); return; }
       if (msg.t === "panel:submit") { reply(await submit(msg.walk, msg.verdict)); return; }
       reply({ ok: false, error: `unknown message: ${String((msg as { t?: unknown }).t)}` });
