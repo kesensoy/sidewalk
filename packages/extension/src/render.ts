@@ -402,6 +402,29 @@ export function renderTokenNotice(port: number, connecting?: Connecting): string
 }
 
 /**
+ * The receipt: one line under the band saying the daemon has let the pane in.
+ *
+ * The band already says *Connected to walkd on 8760* and its dot turns green and
+ * breathes, which is the pane's one designed "alive" signal — but a person who
+ * has just pressed Connect, or just pasted, is looking at the notice above the
+ * cards, and what they are owed is an answer in that place. So the notice
+ * answers itself: the same box, the one green word the pane already uses for
+ * this fact, and one muted sentence about what happens next. No kerb, because a
+ * kerb is the state of a card somebody can touch and a receipt is neither. No
+ * motion: it appears, and four seconds later it is gone.
+ *
+ * Both doors get the same box, because the event is the same one. Which door it
+ * came through is the only thing that differs, and the sentence says so.
+ */
+export const RECEIPT_WORD = "Connected.";
+export const RECEIPT_HOST = "walkd handed over its token. Your walks open here from now on.";
+export const RECEIPT_PASTE = "walkd accepted the token you pasted. Your walks open here from now on.";
+
+export function receiptSay(how: "host" | "paste"): { word: string; text: string } {
+  return { word: RECEIPT_WORD, text: how === "host" ? RECEIPT_HOST : RECEIPT_PASTE };
+}
+
+/**
  * What the gear says about the token that was just saved, and in which colour.
  *
  * The owner, 2026-10-06: "i had copied something else and noticed when i saved my

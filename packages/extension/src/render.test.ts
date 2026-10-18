@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
+import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 
 const look = (id: string, seq: number, group?: string): Item => ({ id, seq, group, kind: "look", owner: "g", title: `T${id}`, url: "http://x/", do: "do", see: "see", pass: "pass", expect: [], addedAt: "2026-09-16T00:00:00Z" });
@@ -1110,6 +1110,26 @@ describe("first run and version notice", () => {
     for (const line of [CONNECT_REFUSED, CONNECT_FAILED]) expect(line).toContain("Paste the token instead.");
     expect(CONNECT_STALE).toContain("Restart walkd");
     for (const line of [CONNECT_ASKING, CONNECT_REFUSED, CONNECT_FAILED, CONNECT_STALE]) expect(line).not.toMatch(/secure/i);
+  });
+
+  /**
+   * The receipt, one door each. The same green word on both because the event is
+   * the same — walkd has let the pane in — and one sentence that says which door
+   * it came through. "handed over" is the manual's own verb for the host; the
+   * paste's "accepted" is the opposite of the pane's "refused".
+   */
+  it("the receipt says the same thing for both doors, and says which door it was", () => {
+    expect(receiptSay("host")).toEqual({ word: "Connected.", text: "walkd handed over its token. Your walks open here from now on." });
+    expect(receiptSay("paste")).toEqual({ word: "Connected.", text: "walkd accepted the token you pasted. Your walks open here from now on." });
+    // The green word is the gear's word, which the owner accepted on 2026-10-06.
+    expect(RECEIPT_WORD).toBe(tokenSay("connected", 8760).text);
+    for (const text of [RECEIPT_HOST, RECEIPT_PASTE]) {
+      expect(text).toContain("Your walks open here from now on.");
+      expect(text).not.toMatch(/secure/i);
+      // Two sentences, and no token in either of them.
+      expect(text.split(". ").length).toBe(2);
+      expect(text).not.toMatch(/Bearer/);
+    }
   });
 
   it("the connection line for a daemon that is answering and refusing says what it wants", () => {

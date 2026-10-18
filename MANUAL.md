@@ -148,26 +148,37 @@ Connect button above the command. Pressing it asks the browser for one
 permission — `nativeMessaging`, which the extension declares as optional rather
 than required, so an update could never disable the extension until somebody
 accepted it — and the browser asks you once per profile. After that the token is
-fetched from the host and stored where a paste would have gone, and the
-connection line says *Connected to walkd on 8760*. The permission request needs
+fetched from the host and stored where a paste would have gone, the connection
+line says *Connected to walkd on 8760*, and a receipt under the band says so for
+a few seconds. The permission request needs
 your own click (both browsers refuse it otherwise), which is why there is a
 button and not a quiet retry.
 
-**The panel may reload itself on that first press, and that is the fix for a
-real bug.** Chrome hands the native messaging API only to contexts created
-*after* the grant (measured on 2026-10-18, on the store build, with a real
-grant): afterwards `permissions.contains` is true everywhere, while
+**The panel asks through a hidden frame of its own on that first press, and that
+is the fix for a real bug.** Chrome hands the native messaging API only to
+contexts created *after* the grant (measured on 2026-10-18, on the store build,
+with a real grant): afterwards `permissions.contains` is true everywhere, while
 `chrome.runtime.sendNativeMessage` is still undefined both in the extension's
 background worker and in the panel page that drew the button — and a side panel
 closed and opened again has it and reaches the host first time. No wait fixes a
-context that already exists. So when the page cannot make the call, it writes one
-short-lived note of what the press was about, reloads, and the load that follows
-finishes the press from a context the browser has caught up with. It happens
-once per profile, on a pane walkd has locked out; a note typed on a card and not
-yet sent does not survive it. Firefox was measured the other way on the same
-day — the page that is already open gets the function the moment you accept the
-doorhanger — so
-it never reloads. Either way the token is stored by the worker, under the same
+context that already exists, because what the browser will not do is add a method
+back onto an API object it has already built.
+
+So the panel makes a context instead of waiting for one: a hidden frame on an
+empty page of the extension's own, whose `chrome.runtime` is built from the
+permissions as they stand now, and which this page may call through because the
+two are the same origin. Nothing is drawn and nothing on the pane moves — no
+reload, so your drafts, your ticks, the scroll, the gear and the text size all
+stay where they were — and the frame is taken away as soon as the answer is in.
+
+Only if that frame comes back without the method does the panel fall back to
+reloading itself: it writes one short-lived note of what the press was about, and
+the load that follows finishes the press. That is the path that costs you
+something — a fresh document walks through four honest states on its way back,
+and a note typed on a card and not yet sent does not survive it — and it is there
+for a browser that behaves differently from the one measured. Firefox needs
+neither: the page that is already open gets the function the moment you accept
+the doorhanger. Every path stores the token through the worker, under the same
 rules, and the pane says the same four things.
 
 The answer is taken only when it is about the daemon the pane is pointed at: one
@@ -842,7 +853,7 @@ at the port it named. Nothing in the suite binds 8760 or 9340, and Chrome's
 remote debugging is 9341 — never 9222, which belongs to the chrome-devtools MCP. It refuses to start
 if something is already answering on 8761.
 
-Forty-one tests, one Chromium with the extension loaded unpacked, one walk per
+Forty-two tests, one Chromium with the extension loaded unpacked, one walk per
 test: an item arriving over SSE and Go navigating and highlighting; the verdict
 that carries its screenshot, build id and console tail; a capture wider than the
 cap; the gear's text size across a reload; a secret's value absent from the
@@ -879,9 +890,12 @@ never accept: the host is asked twice and no more however many refreshes
 follow, and the press says to restart walkd rather than to paste; and the two
 contexts a press runs in — a worker with the permission and no API, where the
 press connects anyway because the panel asks the host itself, and a panel that
-reloaded with the press's own note set, which finishes it with nothing pressed.
+reloaded with the press's own note set, which finishes it with nothing pressed;
+and the press as a person meets it on Chrome, with no method in either context,
+where the panel asks through a hidden frame and the pane connects without
+navigating, without a frame left behind, and with the receipt under the band.
 
-The last five run a browser of their own, because what they are about is a
+The last six run a browser of their own, because what they are about is a
 profile that has never been given anything. Two things they do that nothing else
 in the suite does: they load a copy of `dist` whose manifest asks for
 `nativeMessaging` outright (no automation can press Chrome's permission bubble,
@@ -892,9 +906,11 @@ manifest walkd's own writer produced into `<user-data-dir>/NativeMessagingHosts`
 beside `Default/`, which is the only place a Chromium launched with
 `--user-data-dir` looks. The copy also rewrites the default port to 8761, so a
 profile with nothing in storage cannot go looking for the daemon you are using.
-Two of them go further and take `sendNativeMessage` away from the worker with a
-seam appended to `sw.js`, which is Chrome's stale worker in the one shape no
-automation can produce for itself: the permission held, and no function to call.
+Three of them go further and take `sendNativeMessage` away with a seam appended
+to `sw.js`, and one of those three from `panel.js` as well — the field shape in
+the one way no automation can produce for itself, since no automation can grant
+the permission for real: the permission held, and no function to call in either
+context a press runs in.
 The shipped `dist` keeps the permission optional; the patch is made into a temp
 directory by the test, so it cannot reach a store zip.
 

@@ -1182,6 +1182,12 @@ test("pasting the token into the gear is what lets the pane in", async () => {
   // storage took the write: green only once it has let the pane in.
   await expect(panel.locator("#token-said")).toHaveText("Connected.", { timeout: 15_000 });
   await expect(panel.locator("#token-said")).toHaveClass("pass");
+  // The paste door's receipt, in the same box as the host door's, saying which
+  // door it was. The gear's own line stays — that one is about this paste.
+  await expect(panel.locator("#receipt")).toHaveText("Connected. walkd accepted the token you pasted. Your walks open here from now on.");
+  await expect(panel.locator("#receipt b")).toHaveText("Connected.");
+  await expect(panel.locator("#receipt")).toBeHidden({ timeout: 6_000 });
+  console.log(`receipt proof: the paste door said "Connected. walkd accepted the token you pasted. Your walks open here from now on." and took it away by itself`);
 
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator('header[data-walk-id="w-paste"]')).toHaveCount(1, { timeout: 15_000 });
@@ -1602,7 +1608,14 @@ test("with no host on disk the pane says so, and Connect says what came of it �
     await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
     await expect(pane.panel.locator(".note.token")).toHaveCount(0);
     expect((await pane.sw.evaluate(() => chrome.storage.local.get("walkd:token")))["walkd:token"]).toBe(token);
+    // The notice's place answers in the notice's own box: one green word and one
+    // sentence, for four seconds and then gone.
+    await expect(pane.panel.locator("#receipt")).toBeVisible();
+    await expect(pane.panel.locator("#receipt")).toHaveText("Connected. walkd handed over its token. Your walks open here from now on.");
+    await expect(pane.panel.locator("#receipt b")).toHaveText("Connected.");
+    await expect(pane.panel.locator("#receipt")).toBeHidden({ timeout: 6_000 });
     console.log(`hands-free proof: Connect pressed again with the manifest in the profile — connected to walkd on ${PORT}, token identical, nothing restarted`);
+    console.log(`receipt proof: the host door said "Connected. walkd handed over its token. Your walks open here from now on." and took it away by itself`);
   } finally {
     await pane.close();
   }
@@ -1657,7 +1670,11 @@ test("a token the host hands over that walkd refuses is said once, and not asked
     await pane.panel.locator(".note.token button[data-connect]").click();
     await expect(pane.panel.locator(".note.token .said")).toHaveText("walkd refused the token the host handed over. Restart walkd, then press Connect again.", { timeout: 15_000 });
     expect(asks(), "the press is one ask of its own").toBe(3);
-    console.log(`rotate proof: Connect says "walkd refused the token the host handed over. Restart walkd, then press Connect again."`);
+    // And no receipt, at any point: a pane walkd is refusing has nothing to
+    // show a receipt for, which is the lie the gear's own check went out to end.
+    await expect(pane.panel.locator("#receipt")).toBeHidden();
+    expect(await pane.panel.evaluate(() => document.getElementById("receipt")!.textContent)).toBe("");
+    console.log(`rotate proof: Connect says "walkd refused the token the host handed over. Restart walkd, then press Connect again." and no receipt was shown`);
   } finally {
     await pane.close();
     // Hand the daemon's own token back to the file, so nothing after this test

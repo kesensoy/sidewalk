@@ -1,6 +1,6 @@
 import type { ConnectAnswer, GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
-import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
+import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, applyChoices, drainPercent, needsText, needsTokenLine, receiptSay, renderEmpty, renderFirstRun, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
 import { type Area, ASK_TIMEOUT_MS, NATIVE_PERMISSION, armConnect, askHost, canAskHere, freshRuntime, takeArmed } from "./native.js";
 import { versionsDiffer } from "./version.js";
 import { setMarkup } from "./markup.js";
@@ -136,6 +136,44 @@ function dropStaleTokenSay() {
 }
 
 /**
+ * How long the receipt stands. Two sentences is about three seconds of reading,
+ * and the first thing a person does after connecting is usually close the gear
+ * or press Go on a card that has just appeared — a line vanishing under a click
+ * reads as the click having done it, so it goes before they get there.
+ */
+const RECEIPT_MS = 4000;
+let receiptTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Say that walkd has let the pane in, in the place the eye already is.
+ *
+ * Put into a persistent element rather than a new one: `role="status"` is read
+ * out when the contents of a live region change, and an element created with its
+ * text in it is not reliably announced. Same reason `#said` is in the page.
+ */
+function sayReceipt(how: "host" | "paste") {
+  const el = document.getElementById("receipt");
+  if (!el) return;
+  const { word, text } = receiptSay(how);
+  const b = document.createElement("b");
+  b.textContent = word;
+  el.replaceChildren(b, document.createTextNode(` ${text}`));
+  el.hidden = false;
+  clearTimeout(receiptTimer);
+  receiptTimer = setTimeout(hideReceipt, RECEIPT_MS);
+}
+
+/** Take it away: at four seconds, or the moment the daemon refuses the pane again. */
+function hideReceipt() {
+  clearTimeout(receiptTimer);
+  receiptTimer = undefined;
+  const el = document.getElementById("receipt");
+  if (!el) return;
+  el.hidden = true;
+  el.replaceChildren();
+}
+
+/**
  * What came of the last Go, when no card can say it.
  *
  * A page the check could not be run on files no verdict — silence is not a
@@ -184,6 +222,10 @@ async function saveToken() {
   if (mine !== checking) return;                       // a later Save owns the line now
   if (button) button.disabled = false;
   sayToken(answer.check, answer.port);
+  // The same receipt as the host door, because it is the same event: walkd has
+  // let the pane in. The gear's own line stays too — that one is the verdict on
+  // this paste, and it is what the person was waiting on.
+  if (answer.check === "connected") sayReceipt("paste");
   // A refused token is a paste that has to happen again, so the field is where
   // the hand already is, with the wrong one selected for the next paste to replace.
   if (answer.check === "refused") { field.focus(); field.select(); }
@@ -370,6 +412,11 @@ function paintConnect(answer: ConnectAnswer | undefined) {
   // dead end as a host that did not.
   connecting = !answer ? "failed" : answer.end === "refusedToken" ? "stale" : answer.end === "noHost" ? "failed" : undefined;
   paint();
+  // After the paint, not before it: `connected` here is the daemon's own verdict
+  // (`sw.ts` `verdict`), and the state this pane is painting from may not have
+  // caught up with it yet — a paint that still reads `needsToken` would take the
+  // receipt away in the same breath as putting it up.
+  if (answer?.end === "connected") sayReceipt("host");
 }
 
 /**
@@ -431,6 +478,10 @@ function paint() {
   // must not take the line off a press this panel is in the middle of, which is
   // exactly where a reloaded panel starts.
   if (state.needsToken === false) connecting = undefined;
+  // A receipt standing over a pane the daemon has gone back to refusing — one
+  // `walkd token --rotate` is enough — is the same lie as the "Saved" the gear's
+  // check went out to end.
+  if (state.needsToken) hideReceipt();
   // The token notice outranks the version one: until the daemon lets the pane
   // in, nothing it might say about versions can be acted on.
   setMarkup(document.getElementById("notice")!, state.needsToken

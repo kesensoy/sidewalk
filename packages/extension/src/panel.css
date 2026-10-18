@@ -275,6 +275,15 @@ p.refused{color:var(--issue)}
 .note .connect .said.issue{color:var(--issue)}
 #notice:empty{display:none}
 #notice .note{margin:8px 12px 0}
+/* The receipt: the notice's own box, in the notice's place, for four seconds
+   after the daemon lets the pane in. A persistent element so `role="status"`
+   announces what is put inside it — a node created with its content is not
+   reliably read out — and `hidden` is all that takes it away, so nothing on the
+   pane moves but this. The green is the pass colour on one word, which is the
+   same green and the same word the gear's Save line has said since 2026-10-06;
+   `.pass` itself is the italic verdict line and is not reused here. */
+#receipt{margin:8px 12px 0}
+#receipt b{font-weight:700;color:var(--pass)}
 /* What came of the last Go, when nothing else can say it: a page the check
    could not run on files no verdict at all, so this line is the only place the
    press is accounted for. One line, muted, gone on the next press. */

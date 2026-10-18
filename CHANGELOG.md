@@ -23,11 +23,19 @@ with nothing pasted and nothing printed.
   a running daemon the file and the daemon disagree, so the host hands over a
   token that daemon will never accept, and the pane says *walkd refused the
   token the host handed over. Restart walkd, then press Connect again.*
-  On Chrome the panel reloads itself once on that first press: the browser hands
-  the native messaging API only to contexts made after the grant, so the page
-  that drew the button cannot use it and the load after the reload can. It
-  happens once per profile, on a pane walkd has locked out, and Firefox does not
-  need it.
+  On Chrome the panel asks through a hidden frame of its own on that first
+  press: the browser hands the native messaging API only to contexts made after
+  the grant, so the page that drew the button cannot make the call and a frame
+  it creates can. Nothing on the pane moves for it. If that frame comes back
+  without the method too, the panel reloads itself to finish, which is the one
+  path that costs the pane its drafts and its scroll. Firefox needs neither.
+- **A receipt says walkd has let the pane in.** Under the band, in the notice's
+  own box, for four seconds: *Connected.* in the pane's pass green, then one
+  sentence saying which door it came through — walkd handing its token over, or
+  walkd accepting the one you pasted. It takes itself away, and it goes at once
+  if walkd starts refusing the pane again, because a receipt standing over a
+  locked-out pane is the lie the gear's own check went out to end. Nothing
+  animates and nothing else moves.
 - **The manifest carries the Web Store public key.** A Load-unpacked build now
   reports the store id `fiibejlikopcaplomihaegmbanhjjmed`, which is the only
   origin the native messaging host admits — so a checkout's panel reaches the
