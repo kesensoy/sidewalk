@@ -84,7 +84,7 @@ describe("where the manifests go", () => {
 
   it("honours XDG_CONFIG_HOME, and lets the override win over it", () => {
     expect(nativeRoots({ XDG_CONFIG_HOME: "/xdg" }).config).toBe("/xdg");
-    expect(nativeRoots({ XDG_CONFIG_HOME: "/xdg", [NATIVE_ROOT_ENV]: "/h" })).toEqual({ home: "/h", config: path.join("/h", ".config"), overridden: true });
+    expect(nativeRoots({ XDG_CONFIG_HOME: "/xdg", [NATIVE_ROOT_ENV]: "/h" })).toEqual({ home: "/h", config: "/h/.config", overridden: true });
     // A blank variable is not a value.
     expect(nativeRoots({ [NATIVE_ROOT_ENV]: "  " }).home).toBe(os.homedir());
     expect(nativeRoots({ [NATIVE_ROOT_ENV]: "  " }).overridden).toBe(false);
