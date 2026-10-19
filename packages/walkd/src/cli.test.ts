@@ -171,6 +171,58 @@ describe("walkd stop", () => {
     expect(out.join("")).toBe("walkd: not running (stale state file removed)\n");
     expect(await readState(tmp)).toBeNull();
   }, 15000);
+
+  /**
+   * The file its *own* kill leaves, which is the Windows one. A "SIGTERM" there
+   * is TerminateProcess: the daemon never runs the shutdown that removes its
+   * state file, so `status` called the dead daemon NOT ANSWERING until the next
+   * stop or start cleared it (seen on a real Windows PC, 2026-10-19). On every
+   * other platform the daemon removes the file itself and `stop` must not race
+   * it, so this asserts the opposite there — both halves run on all three
+   * runners, and only one of them is the fix.
+   */
+  it("removes the state file its own kill leaves behind, on Windows only", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-killed-"));
+    const startedAt = new Date().toISOString();
+    const pid = process.pid + 100000;                       // never signalled: process.kill is a spy
+    const daemon = await otherProgram({ ok: true, version: VERSION, pid, startedAt });
+    await fs.writeFile(path.join(tmp, "walkd.json"),
+      JSON.stringify({ port: daemon.port, pid, dataDir: path.join(tmp, "data"), startedAt }));
+    const killed: [number, unknown][] = [];
+    const kill = vi.spyOn(process, "kill").mockImplementation(((p: number, sig: unknown) => { killed.push([p, sig]); return true; }) as typeof process.kill);
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(((s: string) => { out.push(String(s)); return true; }) as typeof process.stdout.write);
+    const prev = process.exitCode;
+    try { await expect(main(["stop", "--state-dir", tmp])).resolves.toBeUndefined(); }
+    finally { kill.mockRestore(); write.mockRestore(); process.exitCode = prev; }
+    expect(killed).toEqual([[pid, "SIGTERM"]]);
+    // Nothing new is said either way: the kill was always the whole of it.
+    expect(out.join("")).toBe("");
+    if (process.platform === "win32") expect(await readState(tmp)).toBeNull();
+    else expect((await readState(tmp))?.pid).toBe(pid);
+    await daemon.close();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  it("leaves the state file alone when the kill it tried failed", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-killfail-"));
+    const startedAt = new Date().toISOString();
+    const pid = process.pid + 100000;
+    const daemon = await otherProgram({ ok: true, version: VERSION, pid, startedAt });
+    await fs.writeFile(path.join(tmp, "walkd.json"),
+      JSON.stringify({ port: daemon.port, pid, dataDir: path.join(tmp, "data"), startedAt }));
+    const kill = vi.spyOn(process, "kill").mockImplementation((() => { throw new Error("operation not permitted"); }) as typeof process.kill);
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(((s: string) => { out.push(String(s)); return true; }) as typeof process.stdout.write);
+    const prev = process.exitCode;
+    try { await main(["stop", "--state-dir", tmp]); }
+    finally { kill.mockRestore(); write.mockRestore(); process.exitCode = prev; }
+    expect(out.join("")).toBe(`walkd: pid ${pid} could not be signalled (operation not permitted)\n`);
+    // Still running, as far as anyone knows: the file is the only record of it.
+    expect((await readState(tmp))?.pid).toBe(pid);
+    await daemon.close();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }, 15000);
 });
 
 describe("walkd serve, twice on one state dir", () => {

@@ -448,7 +448,17 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     }
     try { process.kill(s.pid, "SIGTERM"); }
-    catch (e) { process.stdout.write(`walkd: pid ${s.pid} could not be signalled (${(e as Error).message})\n`); }
+    catch (e) { process.stdout.write(`walkd: pid ${s.pid} could not be signalled (${(e as Error).message})\n`); return; }
+    // Windows has no signals: a "SIGTERM" there is TerminateProcess, so the
+    // daemon's own `shutdown` — the half that removes this file — never runs,
+    // and `status` reads the file its killer left as a daemon that is NOT
+    // ANSWERING until the next stop or start clears it. Nobody else is in a
+    // position to clean it up, so the stopper does, and says nothing extra: the
+    // file going is what the person already expected to happen.
+    //
+    // Only on Windows. Elsewhere the daemon removes it itself, and racing it
+    // from here could delete a file the *next* daemon had already written.
+    if (process.platform === "win32") await fs.rm(stateFile(stateDir), { force: true });
     return;
   }
   process.stderr.write(USAGE); process.exitCode = 2;
