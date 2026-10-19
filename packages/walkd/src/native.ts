@@ -129,10 +129,13 @@ export function registersBrowsers(dataDir: string, roots: Roots): boolean {
  * at it — so it answers with nothing and `registryTargets` carries that half.
  */
 export function targets(platform: NodeJS.Platform, roots: Roots): Target[] {
+  // A macOS or Linux layout is a POSIX path wherever it is computed: a test on
+  // Windows asking for the Mac table must not get backslashes in it.
+  const join = path.posix.join;
   const row = (browser: string, family: Family, vendor: string, leaf = "NativeMessagingHosts"): Target =>
-    ({ browser, family, vendor, dir: path.join(vendor, leaf) });
+    ({ browser, family, vendor, dir: join(vendor, leaf) });
   if (platform === "darwin") {
-    const support = (...p: string[]) => path.join(roots.home, "Library", "Application Support", ...p);
+    const support = (...p: string[]) => join(roots.home, "Library", "Application Support", ...p);
     return [
       row("Chrome", "chromium", support("Google", "Chrome")),
       row("Chrome Beta", "chromium", support("Google", "Chrome Beta")),
@@ -148,15 +151,15 @@ export function targets(platform: NodeJS.Platform, roots: Roots): Target[] {
   }
   if (platform === "win32") return [];
   return [
-    row("Chrome", "chromium", path.join(roots.config, "google-chrome")),
-    row("Chrome Beta", "chromium", path.join(roots.config, "google-chrome-beta")),
-    row("Chromium", "chromium", path.join(roots.config, "chromium")),
-    row("Brave", "chromium", path.join(roots.config, "BraveSoftware", "Brave-Browser")),
-    row("Edge", "chromium", path.join(roots.config, "microsoft-edge")),
-    row("Vivaldi", "chromium", path.join(roots.config, "vivaldi")),
+    row("Chrome", "chromium", join(roots.config, "google-chrome")),
+    row("Chrome Beta", "chromium", join(roots.config, "google-chrome-beta")),
+    row("Chromium", "chromium", join(roots.config, "chromium")),
+    row("Brave", "chromium", join(roots.config, "BraveSoftware", "Brave-Browser")),
+    row("Edge", "chromium", join(roots.config, "microsoft-edge")),
+    row("Vivaldi", "chromium", join(roots.config, "vivaldi")),
     // Firefox is the one that is not under the config directory, and the one
     // whose leaf is lowercase and hyphenated.
-    row("Firefox", "firefox", path.join(roots.home, ".mozilla"), "native-messaging-hosts"),
+    row("Firefox", "firefox", join(roots.home, ".mozilla"), "native-messaging-hosts"),
   ];
 }
 
@@ -432,7 +435,13 @@ export type NativeStatus = {
 
 /** The absolute paths a wrapper names, read back out of the file it is. */
 export function wrapperPaths(text: string): { node: string | null; hostJs: string | null } {
-  const quoted = text.match(/"([^"]+)"/g)?.map(s => s.slice(1, -1)) ?? [];
+  // The inverse of `wrapperText`: a batch file doubled its `%`, a sh wrapper
+  // backslashed the four characters a shell reads inside quotes, and a quoted
+  // string in the sh form may hold an escaped quote.
+  const bat = text.startsWith("@echo off");
+  const quoted = bat
+    ? (text.match(/"([^"]*)"/g)?.map(s => s.slice(1, -1).replace(/%%/g, "%")) ?? [])
+    : (text.match(/"((?:\\.|[^"\\])*)"/g)?.map(s => s.slice(1, -1).replace(/\\(["$`\\])/g, "$1")) ?? []);
   return { node: quoted[0] ?? null, hostJs: quoted[1] ?? null };
 }
 

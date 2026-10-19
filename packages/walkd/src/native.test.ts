@@ -164,6 +164,15 @@ describe("the wrapper the browser runs", () => {
     const sh = wrapperText("linux", "/n/bin/node", "/d/native/host.js", "/d/state");
     expect(wrapperPaths(sh)).toEqual({ node: "/n/bin/node", hostJs: "/d/native/host.js" });
     expect(wrapperPaths("nothing quoted here")).toEqual({ node: null, hostJs: null });
+    // The read undoes the write's escaping, in both forms: a Windows node path
+    // through the sh form (what a test on a Windows runner produces), the four
+    // shell characters, and a `%` in a batch path.
+    const odd = "/h/it's $HOME `x` \\ \"q\"/node";
+    expect(wrapperPaths(wrapperText("darwin", odd, "/d/native/host.js", "/d/state")).node).toBe(odd);
+    const win = "C:\\hostedtoolcache\\node\\22\\node.exe";
+    expect(wrapperPaths(wrapperText("darwin", win, "/d/native/host.js", "/d/state")).node).toBe(win);
+    const pct = "C:\\Users\\100%\\node.exe";
+    expect(wrapperPaths(wrapperText("win32", pct, "C:\\d\\host.js", "C:\\d\\state")).node).toBe(pct);
   });
 
   /**
