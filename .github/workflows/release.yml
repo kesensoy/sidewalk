@@ -47,13 +47,26 @@ jobs:
             on { print }
           ' CHANGELOG.md > notes.md
           test -s notes.md
-      - name: Create the release
+      # A tag gets moved: a CI fix lands, the tag is force-pushed onto it, and
+      # this workflow runs a second time for a release that already exists.
+      # So the first run creates the page and every run after brings it up to
+      # date — the zips replaced, the notes and title rewritten from the tree
+      # the tag now points at. The release follows the tag, so nothing here has
+      # to chase the commit.
+      - name: Create or update the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" \
-            --title "sidewalk ${TAG#v}" \
-            --notes-file notes.md \
-            packages/extension/store/sidewalk-chrome-${TAG#v}.zip \
-            packages/extension/store/sidewalk-firefox-${TAG#v}.zip \
-            packages/extension/store/sidewalk-source-${TAG#v}.zip
+          VERSION="${TAG#v}"
+          TITLE="sidewalk $VERSION"
+          set -- \
+            "packages/extension/store/sidewalk-chrome-$VERSION.zip" \
+            "packages/extension/store/sidewalk-firefox-$VERSION.zip" \
+            "packages/extension/store/sidewalk-source-$VERSION.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists — updating it"
+            gh release upload "$TAG" "$@" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$TITLE" --notes-file notes.md "$@"
+          fi
