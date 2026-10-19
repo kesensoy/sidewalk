@@ -98,7 +98,9 @@ export const NATIVE_ROOT_ENV = "WALKD_NATIVE_ROOT";
 
 export function nativeRoots(env: NodeJS.ProcessEnv = process.env): Roots {
   const override = env[NATIVE_ROOT_ENV]?.trim();
-  if (override) return { home: override, config: path.join(override, ".config"), overridden: true };
+  // An overridden root is a test's, and the layouts it asks for are POSIX ones,
+  // so its config dir is joined the POSIX way even on a Windows runner.
+  if (override) return { home: override, config: path.posix.join(override, ".config"), overridden: true };
   const home = os.homedir();
   return { home, config: env.XDG_CONFIG_HOME?.trim() || path.join(home, ".config"), overridden: false };
 }
