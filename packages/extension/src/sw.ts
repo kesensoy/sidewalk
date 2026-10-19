@@ -13,7 +13,7 @@ import { unseenCount } from "./replies.js";
 import { DEFAULT_PORT, PORT_KEY, TOKEN_KEY, connectedKey, daemonBase, parsePort, parseToken } from "./port.js";
 import { UI_KEY, shotsOf } from "./settings.js";
 import { type Asked, STALE_WORKER, adopt, askHost, hasNativePermission } from "./native.js";
-import { type ConnectAnswer, type ConsoleEntry, type GoResult, type PanelToSw, type SwState, type SwToContent, type TokenAnswer, type WalkView } from "./protocol.js";
+import { type ConnectAnswer, type ConsoleEntry, type GoResult, type PanelToSw, type SwState, type SwToContent, type SwToPanel, type TokenAnswer, type WalkView } from "./protocol.js";
 
 const link = new DaemonLink(daemonBase(DEFAULT_PORT));
 const storage = {
@@ -207,7 +207,37 @@ async function checkToken(): Promise<TokenAnswer> {
 function offerToken(): void {
   if (askedIn === askEpisode) return;
   askedIn = askEpisode;
-  void takeToken();
+  void takeToken().then(sayAdopted).catch(() => {});
+}
+
+/**
+ * Tell the pane why it is suddenly in, when nothing was pressed to put it there.
+ *
+ * The press and the paste each answer the half that asked — a `ConnectAnswer`
+ * to the panel that pressed, a `TokenAnswer` to the gear — and both doors put a
+ * receipt up out of that answer. This door has no asker: the worker went to the
+ * host on its own, and all the panel ever sees of it is a state broadcast
+ * turning the connection line green. So the one message, and the panel puts up
+ * the same receipt in the host's words.
+ *
+ * Only from `offerToken`, which is the automatic path alone: a press comes
+ * through `connectNow`, which is answering a panel already waiting on it, and a
+ * paste never asks the host at all.
+ *
+ * And only once walkd has taken the token, through the same `verdict` the press
+ * is answered with: a token in storage is not a working one, which is the lesson
+ * the gear's Save learned, and `store`'s own retarget is no witness to it — the
+ * `onChanged` the write fires often retargets first, which leaves `store`'s call
+ * with nothing to move and nothing to wait for. `verdict` asks walkd and waits,
+ * so the message says what the daemon said. Its refresh also broadcasts the
+ * state behind the receipt before this is sent, which is the order the panel
+ * wants.
+ *
+ * Dropped on the floor when no panel is open, like every other broadcast.
+ */
+async function sayAdopted(r: Asked): Promise<void> {
+  if ((await verdict(r)).end !== "connected") return;
+  chrome.runtime.sendMessage({ t: "sw:connected", how: "host" } satisfies SwToPanel).catch(() => {});
 }
 
 /** What the pane holds right now, for `adopt`. Read after an ask, never before it. */

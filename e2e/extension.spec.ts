@@ -1587,7 +1587,7 @@ async function freshPane(withHost: boolean, opts: { blindWorker?: boolean; blind
   return { fresh, sw, id, panel, log, panelLog, manifest, udd, close };
 }
 
-test("a fresh profile with no token asks walkd's host for it and is let in with nothing pasted", async () => {
+test("a fresh profile with no token asks walkd's host for it, is let in with nothing pasted, and says so in the receipt", async () => {
   const pane = await freshPane(true);
   try {
     // The key in the manifest is what makes an unpacked build report the store
@@ -1612,6 +1612,28 @@ test("a fresh profile with no token asks walkd's host for it and is let in with 
     // The worker's own account of it.
     expect(pane.log.join("\n")).toContain(`the native messaging host handed over the token for ${PORT}`);
     console.log(`hands-free proof: panel connected to walkd on ${PORT} with no paste; the stored token is the daemon's (${String(stored).length} characters, ${String(stored) === token ? "identical" : "DIFFERENT"})`);
+
+    // The receipt for this door, which needs a pane open at the moment the
+    // token lands — above there was none: the worker adopts within a moment of
+    // the browser starting, long before Playwright has a page on the panel, and
+    // a message with nothing listening is dropped on the floor by design.
+    //
+    // Taking the token back out of storage is the honest way back to the state
+    // the worker asks the host from, and it walks the whole ladder: the daemon
+    // still answers, so `wantsToken` with no token asks again — spent, this
+    // episode — and the read that follows is refused, which after an adoption
+    // is worth exactly one more ask (`sw.ts` `refreshNow`). That ask is the
+    // hands-free door a second time, with the pane watching.
+    await pane.sw.evaluate(() => chrome.storage.local.remove("walkd:token"));
+    await expect(pane.panel.locator("#receipt")).toHaveText("Connected. walkd handed over its token. Your walks open here from now on.", { timeout: 20_000 });
+    await expect(pane.panel.locator("#receipt b")).toHaveText("Connected.");
+    await expect(pane.panel.locator("#receipt")).toBeVisible();
+    // The same green word as the gear's Save line, over a pane that is in.
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`);
+    // And it takes itself away, like every other notice on this pane.
+    await expect(pane.panel.locator("#receipt")).toBeHidden({ timeout: 6_000 });
+    expect(await pane.panel.evaluate(() => document.getElementById("receipt")!.textContent)).toBe("");
+    console.log(`receipt proof: the hands-free door said "Connected. walkd handed over its token. Your walks open here from now on." with nothing pressed, and took it away by itself`);
   } finally {
     await pane.close();
   }

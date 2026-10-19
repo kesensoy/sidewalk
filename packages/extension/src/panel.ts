@@ -1,4 +1,4 @@
-import type { ConnectAnswer, GoResult, SwState, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
+import type { ConnectAnswer, GoResult, SwState, SwToPanel, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
 import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, SECRET_DOTS, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, applyChoices, drainPercent, needsText, needsTokenLine, receiptSay, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
 import { type Area, ASK_TIMEOUT_MS, NATIVE_PERMISSION, armConnect, askHost, canAskHere, freshRuntime, takeArmed } from "./native.js";
@@ -176,6 +176,32 @@ function hideReceipt() {
   if (!el) return;
   el.hidden = true;
   el.replaceChildren();
+}
+
+/**
+ * The third door: a token the worker fetched with nobody pressing anything.
+ *
+ * `sw:connected` is the worker saying it went to walkd's host by itself and the
+ * daemon let the pane in on what came back (`sw.ts` `sayAdopted`). It is not an
+ * answer to anything this pane asked, so there is nothing to paint — only the
+ * receipt, and that waits for the paint that carries the state behind it: a
+ * `paint()` reading `needsToken` calls `hideReceipt`, and would take this away
+ * in the same breath as putting it up. The same ordering `paintConnect` keeps,
+ * for the same reason.
+ *
+ * Spent on the first paint after it either way, so one adoption is one receipt:
+ * a daemon that went away between the worker's refresh and this message leaves
+ * nothing behind to be handed to the paste that connects later.
+ */
+let adopted: "host" | undefined;
+
+/** Is the pane in, as the last state the worker sent says? */
+const paneIsIn = () => state.connected && state.needsToken !== true;
+
+function sayAdopted() {
+  const how = adopted;
+  adopted = undefined;
+  if (how && paneIsIn()) sayReceipt(how);
 }
 
 /**
@@ -568,7 +594,14 @@ function markSeen() {
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") markSeen(); });
 window.addEventListener("focus", markSeen);
 
-chrome.runtime.onMessage.addListener(m => { if (m.t === "sw:state") { state = m.state; paint(); } });
+chrome.runtime.onMessage.addListener((m: SwToPanel) => {
+  if (m.t === "sw:state") { state = m.state; paint(); sayAdopted(); return; }
+  // The hands-free door. The broadcast that carries the connected state is
+  // usually here first — the worker sends it before this — and then the paint it
+  // caused is already the one the receipt was waiting for; when it is the other
+  // way round, the next paint picks it up.
+  if (m.t === "sw:connected") { adopted = m.how; if (paneIsIn()) sayAdopted(); }
+});
 
 document.addEventListener("input", e => {
   const t = e.target as HTMLTextAreaElement;
@@ -725,6 +758,7 @@ send<SwState>({ t: "panel:hello" })
     if (!s || !Array.isArray(s.walks)) return;    // the worker answered with an error
     state = s;
     paint();
+    sayAdopted();                                  // an adoption that landed while this was in flight
     markSeen();                                    // the pane only loads because the human opened it
   })
   .catch(() => {});

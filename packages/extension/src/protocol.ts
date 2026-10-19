@@ -89,7 +89,24 @@ export type ConnectEnd = "connected" | "refusedToken" | "noHost" | "nothingToSay
 export type ConnectAnswer = { end: ConnectEnd; port: number; reason?: string };
 
 export type SwToPanel =
-  | { t: "sw:state"; state: SwState };                         // full state on hello and on change
+  | { t: "sw:state"; state: SwState }                          // full state on hello and on change
+  /**
+   * Nobody pressed anything, and the pane is in.
+   *
+   * The hands-free door (`sw.ts` `offerToken`): the daemon said it wanted a
+   * token, this profile held none, so the worker asked walkd's native messaging
+   * host for it by itself and the daemon let the pane in on what came back. The
+   * state broadcast only turns the connection line green — it cannot say *why*
+   * the pane is suddenly in — so this says it, and the panel puts up the same
+   * receipt the Connect press earns. `how` is `host` and only ever that: a
+   * paste and a press each have an asker of their own to answer, and neither
+   * comes this way.
+   *
+   * Sent once per adoption, with no panel necessarily listening: a pane that is
+   * closed when it lands is a pane that will read the connection line when it
+   * opens, which is the whole of the news by then.
+   */
+  | { t: "sw:connected"; how: "host" };
 
 export type SwState = {
   connected: boolean;
