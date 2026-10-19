@@ -455,8 +455,14 @@ describe("a secret on an item", () => {
     // followed. lstat rather than stat is the whole difference.
     const elsewhere = path.join(dir, "credentials");
     await fs.writeFile(elsewhere, "aws-secret-9999\n");
-    await fs.symlink(elsewhere, path.join(secrets, "link.txt"));
-    await expect(add("a", "link.txt")).rejects.toThrow(/secret file is not a regular file: link\.txt \(put it in .*secrets\)/);
+    // A Windows session that is neither elevated nor in Developer Mode may not
+    // create a symlink at all (EPERM, seen on a real PC 2026-10-19). The rule is
+    // still proved on every runner that can, and the rest of this test goes on.
+    const linked = await fs.symlink(elsewhere, path.join(secrets, "link.txt")).then(() => true, (e: NodeJS.ErrnoException) => {
+      if (process.platform === "win32" && e.code === "EPERM") return false;
+      throw e;
+    });
+    if (linked) await expect(add("a", "link.txt")).rejects.toThrow(/secret file is not a regular file: link\.txt \(put it in .*secrets\)/);
 
     // A directory of that name: the old code read EISDIR and called it missing.
     await fs.mkdir(path.join(secrets, "folder.txt"));
