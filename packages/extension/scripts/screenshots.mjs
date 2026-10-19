@@ -262,12 +262,12 @@ try {
       html,body{margin:0}
       body{width:${w}px;height:${h}px;background:${token("ground")};color:${token("ink")};
         font-family:"Atkinson Hyperlegible",system-ui,sans-serif;
-        display:flex;flex-direction:column;justify-content:center;gap:${Math.round(h * 0.055)}px;
-        padding:0 ${Math.round(w * 0.085)}px;box-sizing:border-box}
-      .brand{display:flex;align-items:center;gap:${Math.round(markPx * 0.3)}px}
+        display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:${Math.round(h * 0.06)}px;
+        padding:0 ${Math.round(w * 0.07)}px;box-sizing:border-box}
+      .brand{display:flex;align-items:center;gap:${Math.round(markPx * 0.26)}px}
       .brand svg{width:${markPx}px;height:${markPx}px;display:block}
-      .name{font-weight:700;font-size:${Math.round(markPx * 0.72)}px;letter-spacing:-0.01em;line-height:1}
-      p{margin:0;font-size:${line}px;line-height:1.25;letter-spacing:-0.012em;max-width:22ch;text-wrap:balance}
+      .name{font-weight:700;font-size:${Math.round(markPx * 0.72)}px;letter-spacing:-0.015em;line-height:1}
+      p{margin:0;font-size:${line}px;line-height:1.2;letter-spacing:-0.012em;max-width:19ch;text-wrap:balance}
     </style><div class="brand">${mark}<span class="name">sidewalk</span></div><p>${LINE}</p>`);
     await page.evaluate(() => document.fonts.ready);
     const file = path.join(OUT, `${name}.png`);
@@ -277,8 +277,10 @@ try {
     console.log(`  ${name}.png`);
   };
   console.log("tiles:");
-  await tile("tile-small", 440, 280, 38, 25);
-  await tile("tile-marquee", 1400, 560, 96, 62);
+  // The brand fills the tile: at search-result size the old 38 px mark was a dot
+  // (the owner, 2026-10-12: "zoom it in"). The marquee keeps the same proportion.
+  await tile("tile-small", 440, 280, 84, 28);
+  await tile("tile-marquee", 1400, 560, 210, 64);
 } finally {
   await ctx.close();
   for (const c of kids) c.kill("SIGTERM");
