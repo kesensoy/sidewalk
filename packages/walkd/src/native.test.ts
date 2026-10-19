@@ -34,11 +34,11 @@ const realRoots = () => nativeRoots({});
 /**
  * What `reg.exe query <key> /ve` prints back: a blank line, the key in its long
  * form, then the value indented under it in three columns, CRLF throughout. The
- * user name has a space in it on purpose — `C:\\Users\\Kevin Esensoy\\…` is the
+ * user name has a space in it on purpose — `C:\\Users\\Ada Lovelace\\…` is the
  * case the Windows field check of 2026-10-19 was run under.
  */
 const regQueryOutput = (key: string, file: string): string =>
-  `\r\n${key.replace("HKCU", "HKEY_CURRENT_USER")}\r\n    (Default)    REG_SZ    C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\${file}\r\n\r\n`;
+  `\r\n${key.replace("HKCU", "HKEY_CURRENT_USER")}\r\n    (Default)    REG_SZ    C:\\Users\\Ada Lovelace\\AppData\\Local\\walkd\\native\\${file}\r\n\r\n`;
 
 const read = async (f: string) => JSON.parse(await fs.readFile(f, "utf8"));
 const exists = (f: string) => fs.stat(f).then(() => true, () => false);
@@ -301,19 +301,20 @@ describe("writing it", () => {
    * It does not break. Firefox quotes conditionally (only when the string holds
    * whitespace or a quote) and Chrome unconditionally, so a space-free path
    * looks unquoted under one and quoted under the other, and a path *with* a
-   * space is quoted by both — fixed in Firefox 52, bug 1321637. The research is
-   * in docs/2026-10-19-firefox-host-path-spaces.md; this is the test that keeps
-   * the question from being reopened, and the reason walkd shortens nothing.
+   * space is quoted by both — fixed in Firefox 52, bug 1321637, and watched on a
+   * real Windows PC on 2026-10-19 (Firefox 158 quoted both paths). This is the
+   * test that keeps the question from being reopened, and the reason walkd
+   * shortens nothing.
    */
   it("writes the Firefox manifest's path whole when the data dir has a space in it", async () => {
-    const spaced = path.join(tmp, "Kevin Esensoy", "data");
+    const spaced = path.join(tmp, "Ada Lovelace", "data");
     const report = await writeNativeHost({
       dataDir: spaced, stateDir, platform: "win32", roots: realRoots(), registers: true,
       node: "C:\\Program Files\\nodejs\\node.exe", reg: async () => "",
     });
     const firefox = await read(path.join(report.dir, `${HOST_NAME}.firefox.json`));
     expect(firefox.path).toBe(report.wrapper);
-    expect(firefox.path).toContain("Kevin Esensoy");
+    expect(firefox.path).toContain("Ada Lovelace");
     // The other half, one level down: the wrapper quotes every path inside
     // itself, which is where a space did bite a shipping host (bug 2009190).
     const bat = await fs.readFile(report.wrapper, "utf8");
@@ -441,7 +442,7 @@ describe("walkd native --status", () => {
     // The path, out of the key's own value, spaces in the user name and all:
     // which manifest a browser is being sent to is the question four rows of
     // "set" could not answer.
-    expect(chrome.path).toBe(`C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\${HOST_NAME}.json`);
+    expect(chrome.path).toBe(`C:\\Users\\Ada Lovelace\\AppData\\Local\\walkd\\native\\${HOST_NAME}.json`);
     expect(s.registry.find(k => k.browser === "Firefox")!.path).toContain(".firefox.json");
     for (const k of s.registry) expect(k.key).toContain("HKCU\\");
   });
@@ -465,7 +466,7 @@ describe("walkd native --status", () => {
   describe("regPath", () => {
     it("takes the path out of a real reg query answer, spaces and all", () => {
       expect(regPath(regQueryOutput("HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\x", `${HOST_NAME}.json`)))
-        .toBe(`C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\${HOST_NAME}.json`);
+        .toBe(`C:\\Users\\Ada Lovelace\\AppData\\Local\\walkd\\native\\${HOST_NAME}.json`);
     });
     it("reads a localised value name, and a run of spaces of any width", () => {
       expect(regPath("\r\nHKEY_CURRENT_USER\\Software\\Mozilla\\x\r\n (Standard) REG_SZ C:\\w\\m.json\r\n")).toBe("C:\\w\\m.json");

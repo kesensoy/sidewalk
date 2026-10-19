@@ -757,8 +757,8 @@ describe("walkd native --status, the registry rows", () => {
   const key = `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${HOST_NAME}`;
 
   it("names the manifest the key points at, after the key", () => {
-    expect(registryLine({ browser: "Firefox", key, state: "set", path: "C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\x.json" }))
-      .toBe(`  Firefox: ${key} set, pointing at C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\x.json\n`);
+    expect(registryLine({ browser: "Firefox", key, state: "set", path: "C:\\Users\\Ada Lovelace\\AppData\\Local\\walkd\\native\\x.json" }))
+      .toBe(`  Firefox: ${key} set, pointing at C:\\Users\\Ada Lovelace\\AppData\\Local\\walkd\\native\\x.json\n`);
   });
 
   it("says only what it knows when there is no path to name", () => {
