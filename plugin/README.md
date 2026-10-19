@@ -5,6 +5,13 @@ cards through an MCP server; you walk the cards in a Chrome or Firefox side
 panel beside the live site; each verdict goes back to the agent as data: your
 words, a screenshot, the console tail and the page address.
 
+Install it from the repository's own marketplace:
+
+```
+claude plugin marketplace add kesensoy/sidewalk
+/plugin install sidewalk --marketplace kesensoy/sidewalk
+```
+
 This plugin adds two things to Claude Code:
 
 - The `sidewalk` MCP server, started as `npx -y sidewalk-mcp@<version>`, the

@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.1.0 — 2026-10-12 — the panel connects itself
+## 1.1.0 — 2026-10-18 — the panel connects itself
 
-The daemon's half of the token handoff shipped in 1.0.4. This is the panel's:
+The daemon's half of the token handoff is 1.0.4 below, which was never published on its own; both halves ship together as 1.1.0. This is the panel's:
 press Connect and the pane asks walkd for its own token through the browser,
 with nothing pasted and nothing printed.
 
@@ -69,7 +69,7 @@ with nothing pasted and nothing printed.
   that host, and nothing else travels that way.* And the install script, the
   READMEs and MANUAL §2 lead with Connect and keep the paste as the fallback.
 
-## 1.0.4 — 2026-10-12 — the token reaches the panel
+## 1.0.4 — 2026-10-12 — the token reaches the panel (folded into 1.1.0, never published alone)
 
 The plugin path was the one path that ended in a terminal step. The MCP server
 starts a daemon behind the person's back, with its output thrown away, so the
