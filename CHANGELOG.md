@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.1 — 2026-10-19 — the pane opens at your size, and Windows stops clean
+
+- **The pane opens at the text size you chose.** It used to paint at 100 % and
+  resize a frame later, every line of it jumping on every open for anyone not
+  on the default. Now nothing is drawn until the saved size is on, and a
+  storage that never answers cannot leave the pane blank: after a short wait
+  it shows at the default.
+- **The hands-free door says Connected too.** When the worker fetched the
+  token from walkd's host with nothing pressed, the connection line turned
+  green and nothing said why. Now the same receipt a press of Connect earns —
+  *Connected. walkd handed over its token. Your walks open here from now on.*
+  — shows for a few seconds, once per handover. A paste and a press keep their
+  own receipts.
+- **On Windows, `walkd stop` no longer leaves a state file behind.** Windows
+  has no signals, so the daemon never got to remove the file itself and
+  `walkd status` reported a daemon that was NOT ANSWERING until the next stop
+  or start. The stopper removes it now.
+- **On Windows, `walkd native --status` names the manifest each registry key
+  points at,** on the same line as the key, so there is nothing left to look
+  up with `reg query`.
+- **A Windows user name with a space in it does not break the Firefox host.**
+  Checked on a real PC, and a test keeps it so.
+
 ## 1.1.0 — 2026-10-18 — the panel connects itself
 
 The daemon's half of the token handoff is 1.0.4 below, which was never published on its own; both halves ship together as 1.1.0. This is the panel's:
