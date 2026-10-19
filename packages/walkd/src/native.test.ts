@@ -294,6 +294,33 @@ describe("writing it", () => {
     expect(await exists(path.join(report.dir, "host.bat"))).toBe(true);
   });
 
+  /**
+   * A data directory under a user name with a space in it, which is where the
+   * 2026-10-19 field check expected the Firefox host to break: it saw Firefox
+   * launch the wrapper with no quotes around its path, where Chrome quoted it.
+   * It does not break. Firefox quotes conditionally (only when the string holds
+   * whitespace or a quote) and Chrome unconditionally, so a space-free path
+   * looks unquoted under one and quoted under the other, and a path *with* a
+   * space is quoted by both — fixed in Firefox 52, bug 1321637. The research is
+   * in docs/2026-10-19-firefox-host-path-spaces.md; this is the test that keeps
+   * the question from being reopened, and the reason walkd shortens nothing.
+   */
+  it("writes the Firefox manifest's path whole when the data dir has a space in it", async () => {
+    const spaced = path.join(tmp, "Kevin Esensoy", "data");
+    const report = await writeNativeHost({
+      dataDir: spaced, stateDir, platform: "win32", roots: realRoots(), registers: true,
+      node: "C:\\Program Files\\nodejs\\node.exe", reg: async () => "",
+    });
+    const firefox = await read(path.join(report.dir, `${HOST_NAME}.firefox.json`));
+    expect(firefox.path).toBe(report.wrapper);
+    expect(firefox.path).toContain("Kevin Esensoy");
+    // The other half, one level down: the wrapper quotes every path inside
+    // itself, which is where a space did bite a shipping host (bug 2009190).
+    const bat = await fs.readFile(report.wrapper, "utf8");
+    expect(bat).toContain(`"C:\\Program Files\\nodejs\\node.exe"`);
+    expect(bat).toContain(`"${path.join(report.dir, HOST_SCRIPT)}"`);
+  });
+
   it("keeps a reg failure to that one key", async () => {
     const report = await writeNativeHost({
       dataDir, stateDir, platform: "win32", roots: realRoots(), node: "C:\\n\\node.exe", registers: true,
