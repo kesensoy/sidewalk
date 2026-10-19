@@ -57,6 +57,30 @@ function paintScale() {
   document.getElementById("scale")!.textContent = `${scale}%`;
 }
 
+/**
+ * Nothing is drawn until the pane knows what size to draw itself at.
+ *
+ * The rung is a per-viewer preference in `chrome.storage.local` and that read is
+ * asynchronous, so the document painted at 100 % and then resized a frame later:
+ * everything on the pane jumped, on every open, for anybody not on the default.
+ * The document starts hidden instead (`booting` on the root, the rule in
+ * `panel.css`), and this takes the class off once `paintScale` has run — so the
+ * first paint anybody sees is already theirs. Nothing else about the startup
+ * moves: the walk's paint, the late replay and `hello` keep their own timing.
+ *
+ * The cap is the promise that this can never cost somebody their pane. A storage
+ * that never answers, or a read that throws on the way, leaves the pane at the
+ * default rung rather than blank — longer than the read takes, far shorter than
+ * a blank pane is worth noticing.
+ */
+const BOOT_CAP_MS = 150;
+let bootTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(show, BOOT_CAP_MS);
+function show() {
+  clearTimeout(bootTimer);
+  bootTimer = undefined;
+  document.documentElement.classList.remove("booting");
+}
+
 function paintShots() {
   for (const [id, value] of SHOT_BUTTONS) document.getElementById(id)?.classList.toggle("on", shots === value);
 }
@@ -297,6 +321,7 @@ function askAboutToken(): Promise<TokenAnswer | { check: "noAnswer"; port: numbe
   } catch { /* storage refused: the default is readable */ }
   paintScale();
   paintShots();
+  show();                                          // the rung is on: the pane may be looked at now
 })();
 
 /**

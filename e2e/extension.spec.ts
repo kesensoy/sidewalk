@@ -295,6 +295,47 @@ test("the gear's text size steps, sticks across a reload, and steps back", async
   await expect.poll(scale, { timeout: 15_000 }).toBe("1.25");
   await expect(panel.locator("#scale")).toHaveText("125%");
 
+  // And the rung is on before anybody sees the pane at all. The stored scale is
+  // an async read, so a pane that painted first resized a frame later — every
+  // line of it, on every open. A page of its own with a recorder installed
+  // before anything on it runs, because the one moment this is about is over
+  // for the pane above: the body is hidden while the document is still booting,
+  // and the frame it is shown on is already at 125 %.
+  const probe = await ctx.newPage();
+  await probe.addInitScript(() => {
+    type Frame = { at: string; vis: string; scale: string; booting: boolean };
+    const w = window as unknown as { __boot: Frame[] };
+    w.__boot = [];
+    const note = (at: string) => w.__boot.push({
+      at,
+      vis: document.body ? getComputedStyle(document.body).visibility : "no body",
+      scale: getComputedStyle(document.documentElement).getPropertyValue("--scale").trim(),
+      booting: document.documentElement.classList.contains("booting"),
+    });
+    // From `DOMContentLoaded`, not from here: this runs before the document has
+    // a root element to watch, and the pane is still booting at that point —
+    // the rung comes out of storage, which is a round trip away.
+    document.addEventListener("DOMContentLoaded", () => {
+      note("parsed");
+      const root = document.documentElement;
+      const shown = () => { if (!root.classList.contains("booting")) note("shown"); };
+      new MutationObserver(shown).observe(root, { attributes: true, attributeFilter: ["class"] });
+      shown();
+    });
+  });
+  await probe.goto(`chrome-extension://${extId}/panel.html`);
+  const boot = () => probe.evaluate(() => (window as unknown as { __boot: { at: string; vis: string; scale: string; booting: boolean }[] }).__boot);
+  await expect.poll(async () => (await boot()).map(f => f.at), { timeout: 15_000 }).toEqual(["parsed", "shown"]);
+  const frames = await boot();
+  expect(frames[0].vis, "the pane is not drawn while it is still booting").toBe("hidden");
+  expect(frames[0].booting).toBe(true);
+  expect(frames[1].vis, "shown, and only once").toBe("visible");
+  expect(frames[1].booting).toBe(false);
+  expect(frames[1].scale, "the first paint anybody sees is at their own rung").toBe("1.25");
+  console.log(`scale proof: the pane was ${frames[0].vis} while booting and ${frames[1].vis} at --scale ${frames[1].scale}, so nothing resized under the eye`);
+  await probe.close();
+  await site.bringToFront();
+
   await clickInPanel(panel, site, "#settings");
   await clickInPanel(panel, site, "#scale-down");
   await clickInPanel(panel, site, "#scale-down");

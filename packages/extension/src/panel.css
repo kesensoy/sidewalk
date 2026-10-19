@@ -77,6 +77,16 @@
    that growth by scrolling down by exactly as much, sliding the row and the red
    Undo on it up out from under the hand reaching for it. */
 html{background:var(--ground);overflow-anchor:none}
+/* The pane waits to be drawn until it knows what size to draw itself at. The
+   text size is a per-viewer preference in `chrome.storage.local`, and that read
+   is asynchronous, so a pane on any other rung used to paint at 100 % and
+   resize a frame later — every line of it jumping, on every open. `booting` is
+   on the root in `panel.html` and `panel.ts` takes it off the moment the rung
+   is on (or at its cap, so a storage that never answers cannot leave a blank
+   pane). `visibility`, not `display`: the layout happens underneath, so nothing
+   is measured against a pane that is not there, and `html` keeps its ground
+   colour, so what is held back is a coloured pane and never a white one. */
+html.booting body{visibility:hidden}
 body{
   margin:0;padding:12px 12px 18px;min-height:100vh;
   background:var(--ground);color:var(--ink);
