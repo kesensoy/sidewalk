@@ -4,9 +4,10 @@ import fs from "node:fs/promises"; import os from "node:os"; import path from "n
 import nodeHttp from "node:http";
 import type { AddressInfo } from "node:net";
 import { pathToFileURL } from "node:url";
-import { DEFAULT_GRACE_MS, readState, main, serve, type Serving } from "./cli.js";
+import { DEFAULT_GRACE_MS, readState, main, registryLine, serve, type Serving } from "./cli.js";
 import { VERSION } from "./http.js";
 import { readToken, writeToken } from "./token.js";
+import { HOST_NAME } from "./native.js";
 
 /** Whether a pid still answers signal 0, which is the only probe Windows has too. */
 const isAlive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -745,6 +746,27 @@ const captured = async (argv: string[], env: Record<string, string> = {}) => {
   const exit = process.exitCode; process.exitCode = code;
   return { out: out.join(""), err: err.join(""), exit };
 };
+
+/**
+ * The Windows registry rows of `walkd native --status`.
+ *
+ * `--status` only reaches the registry on a real Windows, so the row's shape is
+ * read back here instead, on whatever machine the suite is on.
+ */
+describe("walkd native --status, the registry rows", () => {
+  const key = `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${HOST_NAME}`;
+
+  it("names the manifest the key points at, after the key", () => {
+    expect(registryLine({ browser: "Firefox", key, state: "set", path: "C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\x.json" }))
+      .toBe(`  Firefox: ${key} set, pointing at C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\x.json\n`);
+  });
+
+  it("says only what it knows when there is no path to name", () => {
+    expect(registryLine({ browser: "Firefox", key, state: "set" })).toBe(`  Firefox: ${key} set\n`);
+    expect(registryLine({ browser: "Firefox", key, state: "not set" })).toBe(`  Firefox: ${key} not set\n`);
+    expect(registryLine({ browser: "Firefox", key, state: "not read" })).toBe(`  Firefox: ${key} not read\n`);
+  });
+});
 
 /**
  * The native messaging host, through the CLI.

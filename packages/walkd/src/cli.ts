@@ -9,7 +9,7 @@ import { createHttpServer, VERSION } from "./http.js";
 import { defaultDataDir, defaultStateDir } from "./paths.js";
 import { ensureToken, inspectToken, newToken, readToken, TOKEN_ENV, tokenFromEnv, tokenPath, writeToken } from "./token.js";
 import { armClipboardClear, clearIfUnchanged, CLEAR_AFTER_MS, copyToClipboard, type ClipboardCommand } from "./clipboard.js";
-import { nativeLine, nativeRoots, nativeStatus, registersBrowsers, removeNativeHost, writeNativeHost, HOST_NAME, NATIVE_ROOT_ENV } from "./native.js";
+import { nativeLine, nativeRoots, nativeStatus, registersBrowsers, removeNativeHost, writeNativeHost, HOST_NAME, NATIVE_ROOT_ENV, type NativeStatus } from "./native.js";
 import { spawn } from "node:child_process";
 
 export type State = { port: number; pid: number; dataDir: string; startedAt: string };
@@ -90,6 +90,19 @@ export function tokenLine(n: TokenNews): string {
   if (n.copyOff) return `walkd: a new token is in ${n.file}, and the next restart serves the same one. Run "walkd token --copy" and paste it into the panel's gear.\n`;
   return `walkd: a new token is in ${n.file}. This machine has no clipboard command (pbcopy, clip, wl-copy, xclip, xsel). Run "walkd token" to print it, then paste it into the panel's gear.\n`;
 }
+
+/**
+ * One `walkd native --status` row for one Windows registry key, with the
+ * manifest the key points at on the same line as the key.
+ *
+ * It is a function of its own so the Windows shape of this line can be read
+ * back by a test on any machine: `--status` itself reaches the registry only on
+ * a real Windows, and four rows that said nothing but "set" were what sent the
+ * 2026-10-19 field check to `reg query` by hand to find out which file each
+ * browser was being sent to.
+ */
+export const registryLine = (k: NativeStatus["registry"][number]): string =>
+  `  ${k.browser}: ${k.key} ${k.state}${k.path ? `, pointing at ${k.path}` : ""}\n`;
 
 /**
  * `opts.copy` is the clipboard: on for `walkd serve` and `walkd start`, off for
@@ -405,7 +418,7 @@ export async function main(argv = process.argv.slice(2)) {
       }
       for (const f of s.found) process.stdout.write(`  ${f.browser}: ${f.file}\n`);
       for (const a of s.absent) process.stdout.write(`  ${a.browser}: nothing written (no ${a.vendor})\n`);
-      for (const k of s.registry) process.stdout.write(`  ${k.browser}: ${k.key} ${k.state}\n`);
+      for (const k of s.registry) process.stdout.write(registryLine(k));
       return;
     }
     // Plain `walkd native` writes it, for a person whose daemon was already

@@ -271,13 +271,20 @@ export type NativeReport = {
   heldRegistry?: boolean;
 };
 
-/** `reg add` / `reg delete`, the way the clipboard goes through `clip`. */
-export type Reg = (args: string[]) => Promise<void>;
+/**
+ * `reg add` / `reg delete` / `reg query`, the way the clipboard goes through
+ * `clip`. It resolves with the command's stdout, which only `reg query` has
+ * anything to say in: `add` and `delete` are asked to succeed, not to answer.
+ */
+export type Reg = (args: string[]) => Promise<string>;
 
 // `timeout`: a `reg` that hangs would hang a `walkd serve` start, and this runs
 // four times. The failure is recorded like any other and the start carries on.
+// stdout is decoded as UTF-8 like any other child's, which is right for the
+// ASCII paths this reads back and may mangle a non-ASCII one — a mangled path
+// is still a path on the status row, and nothing acts on it.
 const runReg: Reg = args => new Promise((resolve, reject) => {
-  execFile("reg", args, { windowsHide: true, timeout: 5000 }, e => (e ? reject(e) : resolve()));
+  execFile("reg", args, { windowsHide: true, timeout: 5000 }, (e, stdout) => (e ? reject(e) : resolve(stdout)));
 });
 
 export type NativeOptions = {
@@ -427,13 +434,40 @@ export type NativeStatus = {
   found: Wrote[];
   absent: Skipped[];
   /**
-   * `state` rather than a path: `reg query /ve` is asked whether the key is
-   * there, and the answer is not parsed, so printing a manifest path here would
-   * be printing one this never read. "not read" is the overridden-root case,
-   * where the registry is deliberately left alone.
+   * Whether the key is there, and what it points at.
+   *
+   * A key that is set is only half an answer: four keys that all say "set"
+   * still leave the one question a person has — which manifest is this browser
+   * actually being sent to — to a `reg query` typed by hand (the Windows field
+   * check of 2026-10-19 had to). So `reg query /ve`'s own stdout is read back
+   * and the value lands in `path`. It is optional because a key can hold
+   * something this cannot make sense of, and "set" with nothing after it is a
+   * truer row than a guess. "not read" is the overridden-root case, where the
+   * registry is deliberately left alone.
    */
-  registry: { browser: string; key: string; state: "set" | "not set" | "not read" }[];
+  registry: { browser: string; key: string; state: "set" | "not set" | "not read"; path?: string }[];
 };
+
+/**
+ * The manifest path out of a `reg query <key> /ve`.
+ *
+ * `reg` answers with the key on one line and the value on the next, as three
+ * columns run together with spaces — `    (Default)    REG_SZ    C:\…\sh.sidewalk.walkd.json` —
+ * in CRLF lines. The value's *name* is localised ("(Standard)" on a German
+ * Windows), so the match hangs off `REG_SZ`, and the data runs to the end of
+ * the line, which is what lets a path with spaces in it through whole.
+ *
+ * Null for anything that is not that, the empty default value included: a row
+ * that says "set" and names nothing is right, and one that invents a path is
+ * not.
+ */
+export function regPath(stdout: string): string | null {
+  for (const line of stdout.split(/\r?\n/)) {
+    const m = /\sREG_SZ\s+(\S.*?)\s*$/.exec(line);
+    if (m) return m[1];
+  }
+  return null;
+}
 
 /** The absolute paths a wrapper names, read back out of the file it is. */
 export function wrapperPaths(text: string): { node: string | null; hostJs: string | null } {
@@ -481,9 +515,12 @@ export async function nativeStatus(opts: NativeOptions): Promise<NativeStatus> {
     const reg = opts.reg ?? runReg;
     for (const t of registryTargets()) {
       // `reg query` through the same seam: a key that is not there throws, which
-      // is the answer rather than an error.
-      const there = await reg(["query", t.key, "/ve"]).then(() => true, () => false);
-      out.registry.push({ browser: t.browser, key: t.key, state: there ? "set" : "not set" });
+      // is the answer rather than an error. A key that is there answers with the
+      // value too, and that is the manifest path the row goes on to name.
+      const answer = await reg(["query", t.key, "/ve"]).then(s => s, () => null);
+      if (answer === null) { out.registry.push({ browser: t.browser, key: t.key, state: "not set" }); continue; }
+      const file = regPath(answer);
+      out.registry.push({ browser: t.browser, key: t.key, state: "set", ...(file === null ? {} : { path: file }) });
     }
   }
   return out;

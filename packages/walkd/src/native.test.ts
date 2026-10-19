@@ -6,7 +6,7 @@ import path from "node:path";
 import {
   CHROME_ORIGINS, FIREFOX_EXTENSIONS, HOST_NAME, HOST_SCRIPT, NATIVE_ROOT_ENV, NOT_OURS, batEscape,
   defaultSource, manifest, manifestName, nativeLine, nativeRoots, nativeStatus, registersBrowsers,
-  registryTargets, removeNativeHost, shEscape, targets, wrapperName, wrapperPaths, wrapperText,
+  regPath, registryTargets, removeNativeHost, shEscape, targets, wrapperName, wrapperPaths, wrapperText,
   writeNativeHost,
 } from "./native.js";
 import { defaultDataDir } from "./paths.js";
@@ -31,6 +31,15 @@ const roots = () => nativeRoots({ [NATIVE_ROOT_ENV]: path.join(tmp, "home") });
  * skipped by design, which is the whole point of H1.
  */
 const realRoots = () => nativeRoots({});
+/**
+ * What `reg.exe query <key> /ve` prints back: a blank line, the key in its long
+ * form, then the value indented under it in three columns, CRLF throughout. The
+ * user name has a space in it on purpose — `C:\\Users\\Kevin Esensoy\\…` is the
+ * case the Windows field check of 2026-10-19 was run under.
+ */
+const regQueryOutput = (key: string, file: string): string =>
+  `\r\n${key.replace("HKCU", "HKEY_CURRENT_USER")}\r\n    (Default)    REG_SZ    C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\${file}\r\n\r\n`;
+
 const read = async (f: string) => JSON.parse(await fs.readFile(f, "utf8"));
 const exists = (f: string) => fs.stat(f).then(() => true, () => false);
 
@@ -269,7 +278,7 @@ describe("writing it", () => {
     const calls: string[][] = [];
     const report = await writeNativeHost({
       dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", registers: true,
-      reg: async args => { calls.push(args); },
+      reg: async args => { calls.push(args); return ""; },
     });
     expect(report.registry.map(w => w.browser)).toEqual(["Chrome", "Chromium", "Edge", "Firefox"]);
     expect(calls).toHaveLength(4);
@@ -288,7 +297,7 @@ describe("writing it", () => {
   it("keeps a reg failure to that one key", async () => {
     const report = await writeNativeHost({
       dataDir, stateDir, platform: "win32", roots: realRoots(), node: "C:\\n\\node.exe", registers: true,
-      reg: async args => { if (args[1].includes("Mozilla")) throw new Error("access is denied"); },
+      reg: async args => { if (args[1].includes("Mozilla")) throw new Error("access is denied"); return ""; },
     });
     expect(report.registry.map(w => w.browser)).toEqual(["Chrome", "Chromium", "Edge"]);
     expect(report.failed).toHaveLength(1);
@@ -306,7 +315,7 @@ describe("writing it", () => {
     const calls: string[][] = [];
     const report = await writeNativeHost({
       dataDir, stateDir, platform: "win32", roots: roots(), node: "C:\\n\\node.exe",
-      reg: async args => { calls.push(args); },
+      reg: async args => { calls.push(args); return ""; },
     });
     expect(calls).toEqual([]);
     expect(report.registry).toEqual([]);
@@ -389,24 +398,63 @@ describe("walkd native --status", () => {
     expect(s.found).toEqual([]);
   });
 
-  it("reads the registry through the same seam on Windows, and says set or not set", async () => {
+  it("reads the registry through the same seam on Windows, and names the manifest each key points at", async () => {
     const s = await nativeStatus({
       dataDir, stateDir, platform: "win32", roots: realRoots(), registers: true,
-      reg: async args => { if (args[1].includes("Chromium")) throw new Error("not found"); },
+      reg: async args => {
+        if (args[1].includes("Chromium")) throw new Error("not found");
+        return regQueryOutput(args[1], args[1].includes("Mozilla") ? `${HOST_NAME}.firefox.json` : `${HOST_NAME}.json`);
+      },
     });
     expect(s.registry.map(k => k.browser)).toEqual(["Chrome", "Chromium", "Edge", "Firefox"]);
-    // `reg query /ve`'s output is not parsed, so the answer is whether the key
-    // is there — never a manifest path this never read.
     expect(s.registry.find(k => k.browser === "Chromium")!.state).toBe("not set");
-    expect(s.registry.find(k => k.browser === "Chrome")!.state).toBe("set");
+    expect(s.registry.find(k => k.browser === "Chromium")!.path).toBeUndefined();
+    const chrome = s.registry.find(k => k.browser === "Chrome")!;
+    expect(chrome.state).toBe("set");
+    // The path, out of the key's own value, spaces in the user name and all:
+    // which manifest a browser is being sent to is the question four rows of
+    // "set" could not answer.
+    expect(chrome.path).toBe(`C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\${HOST_NAME}.json`);
+    expect(s.registry.find(k => k.browser === "Firefox")!.path).toContain(".firefox.json");
     for (const k of s.registry) expect(k.key).toContain("HKCU\\");
+  });
+
+  it("still says set for a key whose value it cannot make sense of", async () => {
+    const s = await nativeStatus({
+      dataDir, stateDir, platform: "win32", roots: realRoots(), registers: true,
+      // An empty default value, which is what `reg add` with no `/d` leaves.
+      reg: async args => `\r\n${args[1].replace("HKCU", "HKEY_CURRENT_USER")}\r\n    (Default)    REG_SZ    \r\n\r\n`,
+    });
+    expect(s.registry.map(k => k.state)).toEqual(["set", "set", "set", "set"]);
+    for (const k of s.registry) expect(k.path).toBeUndefined();
+  });
+
+  /**
+   * The parse on its own, against the shapes a real `reg query` hands back:
+   * CRLF throughout, the value indented under the key, and a value *name* that
+   * is localised — a German Windows says "(Standard)" — which is why the match
+   * hangs off `REG_SZ` and not off the name.
+   */
+  describe("regPath", () => {
+    it("takes the path out of a real reg query answer, spaces and all", () => {
+      expect(regPath(regQueryOutput("HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\x", `${HOST_NAME}.json`)))
+        .toBe(`C:\\Users\\Kevin Esensoy\\AppData\\Local\\walkd\\native\\${HOST_NAME}.json`);
+    });
+    it("reads a localised value name, and a run of spaces of any width", () => {
+      expect(regPath("\r\nHKEY_CURRENT_USER\\Software\\Mozilla\\x\r\n (Standard) REG_SZ C:\\w\\m.json\r\n")).toBe("C:\\w\\m.json");
+    });
+    it("is not fooled by the other value types, or by an answer with no value in it", () => {
+      expect(regPath("\r\n    (Default)    REG_EXPAND_SZ    %LOCALAPPDATA%\\walkd\\m.json\r\n")).toBeNull();
+      expect(regPath("HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\x\r\n")).toBeNull();
+      expect(regPath("")).toBeNull();
+    });
   });
 
   it("does not read the registry at all under an overridden root", async () => {
     const calls: string[][] = [];
     const s = await nativeStatus({
       dataDir, stateDir, platform: "win32", roots: roots(),
-      reg: async args => { calls.push(args); },
+      reg: async args => { calls.push(args); return ""; },
     });
     expect(calls).toEqual([]);
     expect(s.registry.map(k => k.state)).toEqual(["not read", "not read", "not read", "not read"]);
@@ -448,9 +496,9 @@ describe("walkd native --remove", () => {
 
   it("deletes the registry values on Windows", async () => {
     const r = realRoots();
-    await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", registers: true, reg: async () => {} });
+    await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", registers: true, reg: async () => "" });
     const calls: string[][] = [];
-    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, registers: true, reg: async args => { calls.push(args); } });
+    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, registers: true, reg: async args => { calls.push(args); return ""; } });
     expect(calls.map(c => c[0])).toEqual(["delete", "delete", "delete", "delete"]);
     expect(calls.every(c => c[2] === "/f")).toBe(true);
     expect(gone.removed).toContain(registryTargets()[0].key);
@@ -458,9 +506,9 @@ describe("walkd native --remove", () => {
 
   it("deletes no registry value under an overridden root, but still takes its own files out", async () => {
     const r = roots();
-    const report = await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", reg: async () => {} });
+    const report = await writeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, node: "C:\\n\\node.exe", reg: async () => "" });
     const calls: string[][] = [];
-    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, reg: async args => { calls.push(args); } });
+    const gone = await removeNativeHost({ dataDir, stateDir, platform: "win32", roots: r, reg: async args => { calls.push(args); return ""; } });
     // A run that was never allowed to write a key must not delete one either.
     expect(calls).toEqual([]);
     expect(gone.removed.some(f => f.startsWith("HKCU\\"))).toBe(false);
