@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -640,4 +642,124 @@ describe("the host program", () => {
     await fs.writeFile(path.join(dataDir, "token"), "the-token\n");
     expect(await ask(["--state-dir", stateDir], null)).toBeNull();
   }, 15000);
+});
+
+/**
+ * The stop op: the panel's *Restart walkd* button, from the host's side.
+ *
+ * The twin is `stop` in `cli.ts`, mirrored there and here because this host
+ * imports `node:fs` and nothing else — so what the two share is behaviour, and
+ * this is what pins it. The daemon in these cases is a stand-in rather than a
+ * real `walkd serve`: a child that sits there until it is signalled, and an
+ * HTTP server answering /health about it. That is exactly the surface the stop
+ * op reads, and it lets every refusal be built on purpose — a port somebody
+ * else holds, a pid that is not the one answering — which a real daemon will
+ * not do for a test.
+ */
+describe("the host program's stop op", () => {
+  const frame = (body: unknown) => {
+    const json = Buffer.from(JSON.stringify(body), "utf8");
+    const head = Buffer.alloc(4);
+    head.writeUInt32LE(json.length, 0);
+    return Buffer.concat([head, json]);
+  };
+
+  const ask = (body: unknown) => new Promise<Record<string, unknown> | null>(resolve => {
+    const child = spawn(process.execPath, [path.join(defaultSource(), HOST_SCRIPT), "--state-dir", stateDir], { stdio: ["pipe", "pipe", "ignore"] });
+    const chunks: Buffer[] = [];
+    child.stdout.on("data", c => chunks.push(c));
+    child.on("close", () => {
+      const buf = Buffer.concat(chunks);
+      resolve(buf.length < 4 ? null : JSON.parse(buf.subarray(4, 4 + buf.readUInt32LE(0)).toString("utf8")));
+    });
+    child.stdin.end(frame(body));
+  });
+
+  /** A process to be stopped, and the /health that vouches for it. Both torn down after. */
+  const standIns: (() => Promise<void>)[] = [];
+  async function standIn(health: (pid: number) => unknown) {
+    // A child that does nothing but stay alive, so a signal is the only thing
+    // that ends it and its exit is the proof the host sent one.
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    const gone = new Promise<string>(r => child.once("exit", (_c, sig) => r(String(sig))));
+    const body = JSON.stringify(health(child.pid!));
+    const server = http.createServer((_q, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(body); });
+    await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    standIns.push(async () => { child.kill("SIGKILL"); await new Promise<void>(r => server.close(() => r())); });
+    return { child, port, gone, alive: () => child.exitCode === null && child.signalCode === null };
+  }
+  afterEach(async () => { for (const stop of standIns.splice(0)) await stop(); });
+
+  const writeState = (s: Record<string, unknown>) =>
+    fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({ dataDir, ...s }));
+
+  it("signals the daemon the state file names, and says it stopped it", async () => {
+    const startedAt = new Date().toISOString();
+    const d = await standIn(pid => ({ ok: true, version: "1.2.0", pid, startedAt }));
+    await writeState({ port: d.port, pid: d.child.pid, startedAt });
+    expect(await ask({ t: "stop", port: d.port })).toEqual({ ok: true, stopped: true });
+    expect(await d.gone).toBe("SIGTERM");
+  }, 20000);
+
+  /**
+   * One host serves the whole machine and answers about whichever walkd owns the
+   * registration, so a pane pointed somewhere else must not be able to stop this
+   * one. The token op has the same guard in the panel (`askHost` drops an answer
+   * about another port); on a stop there is nothing left to drop afterwards, so
+   * the refusal has to be the host's.
+   */
+  it("refuses a stop that names another port than the one it is registered for", async () => {
+    const startedAt = new Date().toISOString();
+    const d = await standIn(pid => ({ ok: true, version: "1.2.0", pid, startedAt }));
+    await writeState({ port: d.port, pid: d.child.pid, startedAt });
+    expect(await ask({ t: "stop", port: d.port + 1 })).toEqual({ ok: false, reason: `this host is registered for walkd on ${d.port}` });
+    expect(await ask({ t: "stop" })).toEqual({ ok: false, reason: "a stop has to name the port it means" });
+    expect(d.alive()).toBe(true);
+  }, 20000);
+
+  /** The twin's reason for existing: a pid that was reused, or a port another program holds. */
+  it("refuses to signal a pid when what answers on the port is not that daemon", async () => {
+    const d = await standIn(() => ({ ok: true, version: "1.2.0", pid: 999_999, startedAt: "someone else's" }));
+    await writeState({ port: d.port, pid: d.child.pid, startedAt: new Date().toISOString() });
+    expect(await ask({ t: "stop", port: d.port })).toEqual({ ok: false, reason: `something else answers on ${d.port}` });
+    expect(d.alive()).toBe(true);
+  }, 20000);
+
+  /**
+   * Nothing answers: the daemon the file names is already gone, which is what
+   * was asked for — so `ok`, and the stale file goes the way the twin takes it.
+   * Port 9 is discard; nothing listens there.
+   */
+  it("takes the stale state file away when nothing healthy answers, and calls that stopped", async () => {
+    await writeState({ port: 9, pid: 999_999, startedAt: "x" });
+    expect(await ask({ t: "stop", port: 9 })).toEqual({ ok: true, stopped: true });
+    await expect(fs.readFile(path.join(stateDir, "walkd.json"))).rejects.toThrow();
+  }, 20000);
+
+  it("says why rather than how when there is no state file or it is incomplete", async () => {
+    expect(await ask({ t: "stop", port: 8760 })).toEqual({ ok: false, reason: "no walkd is running" });
+    await writeState({ pid: 1 });
+    expect(await ask({ t: "stop", port: 8760 })).toEqual({ ok: false, reason: "walkd's state file is incomplete" });
+  }, 20000);
+
+  /**
+   * The compatibility case, both ways round.
+   *
+   * Forwards: this host answers an op it does not know with one word, rather
+   * than handing out the token the way every host up to 1.1.1 did for any
+   * message at all. Backwards: `stopped: true` is what a panel looks for,
+   * because a 1.1.1 host answers a stop request with `{ok: true, port, token}`
+   * and the panel has to be able to tell a daemon that went away from a host
+   * that never understood the question.
+   */
+  it("answers an op it does not know with unknownOp, and never the token", async () => {
+    await writeState({ port: 8765, pid: 1, startedAt: "x" });
+    await fs.writeFile(path.join(dataDir, "token"), "the-token\n");
+    for (const body of [{ t: "restart" }, { t: "" }, {}, "stop", 7, null]) {
+      expect(await ask(body), `op ${JSON.stringify(body)}`).toEqual({ ok: false, reason: "unknownOp" });
+    }
+    // And the op it does know is untouched by all of that.
+    expect(await ask({ t: "token" })).toEqual({ ok: true, port: 8765, token: "the-token" });
+  }, 30000);
 });

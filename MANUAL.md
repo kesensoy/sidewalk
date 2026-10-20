@@ -143,6 +143,17 @@ user can write, launches the program it names, and refuses every extension but
 the one that manifest lists. That is how the panel gets the token without the
 paste.
 
+The host understands two messages. One hands over the port and the token; the
+other stops the daemon, and is what the panel's *Restart walkd* button presses
+when the two are not the same release (below). It does what `walkd stop` does,
+down to refusing when something other than the daemon in the state file is
+answering on that port, and it also refuses a stop that names a port other than
+the one it was registered for — one host serves the machine, and a pane pointed
+somewhere else must not be able to stop the daemon you are using. A host older
+than the panel knows no message types at all: it answers the token to anything
+it is sent, so the panel takes `stopped: true` as the only evidence a daemon
+went away and shows the by-hand words otherwise.
+
 **The panel's half: Connect.** When walkd refuses it, the pane says so in one
 sentence above the cards — *walkd on port 8760 is running and has not let this
 panel in yet* — with one thing to press under it. Pressing it asks the browser
