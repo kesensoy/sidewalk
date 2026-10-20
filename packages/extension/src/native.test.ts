@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ASK, ASK_PAGE, ASK_TIMEOUT_MS, CONNECT_FLAG, CONNECT_FLAG_MS, HOST_NAME, NATIVE_PERMISSION, STALE_WORKER, adopt, armConnect, armedFlag, askHost, canAskHere, hasNativePermission, reasonOf, takeArmed, type Area, type Asked } from "./native.js";
+import { ASK, ASK_PAGE, ASK_TIMEOUT_MS, CONNECT_FLAG, CONNECT_FLAG_MS, HOST_NAME, NATIVE_PERMISSION, STALE_WORKER, adopt, armConnect, armedFlag, askHost, askStop, canAskHere, hasNativePermission, reasonOf, takeArmed, type Area, type Asked } from "./native.js";
 
 /**
  * The host is a program the browser launches, so there is nothing of it to run
@@ -138,6 +138,75 @@ describe("askHost", () => {
     stub({ fail: "not an Error at all" });
     (globalThis as { chrome: { runtime: { lastError?: unknown } } }).chrome.runtime.lastError = { message: "Native host has exited." };
     expect(await askHost(8761)).toEqual({ ok: false, reason: "hostExited", said: "Native host has exited." });
+  });
+});
+
+/**
+ * The *Restart walkd* press, from the panel's side. The host's own half — the
+ * four steps it takes and the refusals it makes — is pinned in walkd's
+ * `native.test.ts`, by running the program.
+ */
+describe("askStop", () => {
+  it("names the port it means, and takes the host's word that the daemon went away", async () => {
+    const calls = stub({ reply: { ok: true, stopped: true } });
+    expect(await askStop(8761)).toEqual({ ok: true });
+    expect(calls).toEqual([{ host: HOST_NAME, message: { t: "stop", port: 8761 } }]);
+  });
+
+  /**
+   * The compatibility trap, and the reason the answer carries a marker at all.
+   *
+   * Every host up to 1.1.1 read nothing off the frame and answered the token to
+   * any message it was sent, so a stop request against one comes back
+   * `{ok: true, port, token}`. Taking `ok` as the answer would have the pane
+   * saying a daemon went away that is still running — and the person waiting
+   * for a pane that never changes. This is the end that puts the by-hand words
+   * on screen instead.
+   */
+  it("refuses a 1.1.1 host's token answer rather than calling it a stop", async () => {
+    stub({ reply: { ok: true, port: 8761, token: "the-token-it-always-answers-with" } });
+    const r = await askStop(8761);
+    expect(r.ok).toBe(false);
+    expect(r).toMatchObject({ reason: "unknown" });
+    expect((r as { said?: string }).said).toContain("older than this panel");
+  });
+
+  it("carries the host's own reason when it answers that it will not", async () => {
+    for (const reason of ["unknownOp", "something else answers on 8761", "this host is registered for walkd on 8760"]) {
+      stub({ reply: { ok: false, reason } });
+      expect(await askStop(8761)).toEqual({ ok: false, reason: "hostRefused", said: reason });
+    }
+  });
+
+  it("is the same feature detection, and the same bound on a host that never answers", async () => {
+    stub({ api: false });
+    expect(await askStop(8761)).toEqual({ ok: false, reason: "noApi" });
+
+    vi.useFakeTimers();
+    stub({ hang: true });
+    const asked = askStop(8761, 1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await asked).toEqual({ ok: false, reason: "timeout" });
+  });
+
+  it("reads the browser's own refusals the way the token ask does", async () => {
+    stub({ fail: new Error("Specified native messaging host not found.") });
+    expect(await askStop(8761)).toEqual({ ok: false, reason: "noHost", said: "Specified native messaging host not found." });
+    for (const reply of [undefined, null, "a string", { stopped: true }]) {
+      stub({ reply });
+      expect((await askStop(8761)).ok, JSON.stringify(reply ?? null)).toBe(false);
+    }
+  });
+
+  /** The frame path, for the same reason Connect has one: this page may hold the permission and have no method. */
+  it("asks through whatever runtime it is handed", async () => {
+    stub({ api: false });
+    const calls: { host: string; message: unknown }[] = [];
+    const frame = {
+      sendNativeMessage: (host: string, message: unknown) => { calls.push({ host, message }); return Promise.resolve({ ok: true, stopped: true }); },
+    } as unknown as typeof chrome.runtime;
+    expect(await askStop(8761, ASK_TIMEOUT_MS, frame)).toEqual({ ok: true });
+    expect(calls).toEqual([{ host: HOST_NAME, message: { t: "stop", port: 8761 } }]);
   });
 });
 

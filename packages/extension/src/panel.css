@@ -278,6 +278,10 @@ p.refused{color:var(--issue)}
 .note{padding:12px 14px;border:1px solid var(--edge);border-radius:8px;color:var(--muted);font-size:var(--t-line);line-height:1.45}
 .note h2{margin:0 0 6px;font-size:var(--t-line);font-weight:700;color:var(--ink)}
 .note p{margin:0 0 8px}
+/* The version notice's by-hand sentence is the last thing in the slab when
+   there is no command under it, and a gap below the final line reads as a row
+   that has gone missing. */
+.note p:last-child{margin-bottom:0}
 .note .foot{margin:8px 0 0;font-size:var(--t-label)}
 /* A command with a Copy button. Not scoped to `.note` any more: the gear's own
    first row while walkd is refusing (`#token-how`) is the same thing, one line

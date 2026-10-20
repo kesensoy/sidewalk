@@ -1369,25 +1369,95 @@ test("a Save with nothing answering on the port says so in no colour at all, and
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
 });
 
-test("a daemon of another release is named in the pane with the remedy, and a matching one is not", async () => {
+/** This run's daemon, put back claiming whatever release a test needs it to. */
+async function daemonClaiming(version?: string) {
+  daemon.kill("SIGTERM");
+  await waitFor("stopped answering /health", false);
+  daemon = await startDaemon(version ? { WALKD_ADVERTISE_VERSION: version } : {});
+}
+
+test("a daemon older than the pane says so, offers Restart walkd, and hides the command behind a link", async () => {
   const { panel } = await setup("w-version");
   await expect(panel.locator(".note.version")).toHaveCount(0);
 
-  daemon.kill("SIGTERM");
-  await waitFor("stopped answering /health", false);
-  daemon = await startDaemon({ WALKD_ADVERTISE_VERSION: "0.1.0" });
+  await daemonClaiming("0.1.0");
 
   const mine = await panel.evaluate(() => chrome.runtime.getManifest().version);
   // The reconnect ladder tops out at 5 s between tries; 15 s is that with room.
   await expect(panel.locator(".note.version")).toBeVisible({ timeout: 15_000 });
-  await expect(panel.locator(".note.version")).toContainText(`This panel is ${mine} and walkd on port ${PORT} is 0.1.0.`);
-  await expect(panel.locator(".note.version code")).toHaveText("npx -y sidewalk-walkd stop");
+  await expect(panel.locator(".note.version")).toContainText(`walkd on port ${PORT} is 0.1.0 and this panel is ${mine}. walkd is the older half. They may not understand each other.`);
+  await expect(panel.locator(".note.version button[data-restart]")).toHaveText("Restart walkd");
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`);
 
-  daemon.kill("SIGTERM");
-  await waitFor("stopped answering /health", false);
-  daemon = await startDaemon();
+  // Nothing to run and nothing to copy until it is asked for: the owner's own
+  // shape for this slab — the command hidden behind a text, the button the auto path.
+  await expect(panel.locator(".note.version code")).toHaveCount(0);
+  await panel.locator(".note.version button[data-by-hand]").click();
+  await expect(panel.locator(".note.version")).toContainText("Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.");
+  await expect(panel.locator(".note.version code")).toHaveText("npx -y sidewalk-walkd stop");
+  await expect(panel.locator(".note.version button[data-by-hand]")).toHaveCount(0);
+  // And the button is still there: the link is the other way, not a replacement.
+  await expect(panel.locator(".note.version button[data-restart]")).toBeVisible();
+
+  await daemonClaiming();
   // After the kill the pane is disconnected and the notice goes with it, so wait for the match: a gap must not pass for one.
+  await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
+  await expect(panel.locator(".note.version")).toHaveCount(0, { timeout: 15_000 });
+});
+
+/**
+ * The other direction, which the notice got wrong until now: the daemon was
+ * replaced and the store copy of the extension has not caught up, so stopping
+ * walkd changes nothing and the panel is what has to be updated.
+ *
+ * `requestUpdateCheck` is stubbed, and so is `reload`. It has to be: an unpacked
+ * build has no store listing to check against, and a real `reload` would take
+ * the test's own pane away mid-assertion. What is proved here is the panel's
+ * side of it — which answer leads to which words, and that `update_available`
+ * is what restarts the extension.
+ */
+test("a pane older than the daemon is named as the older half, and its button asks Chrome for an update", async () => {
+  const { panel } = await setup("w-version-panel");
+  const mine = await panel.evaluate(() => chrome.runtime.getManifest().version);
+
+  await daemonClaiming("99.0.0");
+  await expect(panel.locator(".note.version")).toBeVisible({ timeout: 15_000 });
+  await expect(panel.locator(".note.version")).toContainText(`This panel is ${mine} and walkd on port ${PORT} is 99.0.0. The panel is the older half. They may not understand each other.`);
+  await expect(panel.locator(".note.version button[data-update]")).toHaveText("Update the panel");
+  await expect(panel.locator(".note.version button[data-restart]")).toHaveCount(0);
+  // The stop command is not the remedy here and is nowhere on the slab, behind
+  // the link or in front of it.
+  await expect(panel.locator(".note.version")).not.toContainText("sidewalk-walkd stop");
+
+  // Nothing newer in the store yet: one line, and the by-hand way stays.
+  await panel.evaluate(() => {
+    Object.defineProperty(chrome.runtime, "requestUpdateCheck", { value: async () => ({ status: "no_update" }), configurable: true });
+    Object.defineProperty(chrome.runtime, "reload", { value: () => { (globalThis as { reloaded?: boolean }).reloaded = true; }, configurable: true });
+  });
+  await panel.locator(".note.version button[data-update]").click();
+  await expect(panel.locator(".note.version .said")).toHaveText("No newer panel in the store yet.");
+  await expect(panel.locator(".note.version .said")).toHaveClass(/issue/);
+  expect(await panel.evaluate(() => (globalThis as { reloaded?: boolean }).reloaded === true)).toBe(false);
+  await expect(panel.locator(".note.version button[data-by-hand]")).toBeVisible();
+
+  // Chrome is rate-limiting the check: also one line, also not a dead end.
+  await panel.evaluate(() => Object.defineProperty(chrome.runtime, "requestUpdateCheck", { value: async () => ({ status: "throttled" }), configurable: true }));
+  await panel.locator(".note.version button[data-update]").click();
+  await expect(panel.locator(".note.version .said")).toHaveText("Chrome checked too recently. Try again in a few minutes.");
+
+  // The by-hand way, asked for: the page in Chrome's own chrome, which nothing
+  // in an extension can open for somebody.
+  await panel.locator(".note.version button[data-by-hand]").click();
+  await expect(panel.locator(".note.version")).toContainText("Open chrome://extensions and press Update.");
+  await expect(panel.locator(".note.version code")).toHaveCount(0);
+
+  // And the answer that means the new build is downloaded and waiting: the
+  // extension restarts, which is the only thing that puts it on.
+  await panel.evaluate(() => Object.defineProperty(chrome.runtime, "requestUpdateCheck", { value: async () => ({ status: "update_available", version: "99.0.0" }), configurable: true }));
+  await panel.locator(".note.version button[data-update]").click();
+  await expect.poll(() => panel.evaluate(() => (globalThis as { reloaded?: boolean }).reloaded === true), { timeout: 10_000 }).toBe(true);
+
+  await daemonClaiming();
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator(".note.version")).toHaveCount(0, { timeout: 15_000 });
 });
@@ -1923,5 +1993,114 @@ test("a panel older than the grant asks through a hidden frame, with no reload a
     console.log(`frame proof: a panel and a worker with no method connected to walkd on ${PORT} through a hidden frame — no navigation, no iframe left, no flag`);
   } finally {
     await pane.close();
+  }
+});
+
+/* ------------------------------------------------- Restart walkd, for real
+ *
+ * The version notice's button, pressed against a daemon that really is the
+ * older half, through a real host on disk. These two need the same browser of
+ * their own the hands-free tests do, and for the same reason: the permission has
+ * to be required in the build, because the bubble is the one thing no automation
+ * can answer.
+ *
+ * The state file is where `walkd stop` and the host agree: the daemon removes it
+ * on its way out, so its absence is the proof the signal arrived and was acted
+ * on rather than merely sent.
+ */
+const stateFile = () => path.join(dataDir, "state", "walkd.json");
+/** The host the wrapper in this run's manifest launches. */
+const hostFile = () => path.join(dataDir, "native", "host.js");
+
+test("Restart walkd stops the older daemon through the host, and the pane falls to its no-daemon words", async () => {
+  await daemonClaiming("0.1.0");
+  const pane = await freshPane(true);
+  try {
+    // Connected with nothing pasted, the way a fresh profile is.
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    const mine = await pane.panel.evaluate(() => chrome.runtime.getManifest().version);
+    await expect(pane.panel.locator(".note.version")).toContainText(`walkd on port ${PORT} is 0.1.0 and this panel is ${mine}. walkd is the older half.`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.version button[data-restart]")).toHaveText("Restart walkd");
+    expect(JSON.parse(await fs.readFile(stateFile(), "utf8")).port).toBe(PORT);
+
+    await pane.panel.locator(".note.version button[data-restart]").click();
+    // The daemon is gone, and it removed its own state file on the way — which
+    // is what `walkd stop` leaves behind too.
+    await waitFor("stopped answering /health", false);
+    await expect.poll(() => fs.access(stateFile()).then(() => "there", () => "gone"), { timeout: 15_000 }).toBe("gone");
+    // And the pane says the one thing that is true now. Nothing about the press
+    // is left on screen: there is no notice left to say it in.
+    await expect(pane.panel.locator("#status")).toContainText(`Looking for walkd on ${PORT}`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.version")).toHaveCount(0);
+    await expect(pane.panel.locator(".note.token")).toHaveCount(0);
+    console.log(`restart proof: Restart walkd stopped the 0.1.0 daemon on ${PORT} through the host — state file gone, pane back to "Looking for walkd on ${PORT}"`);
+  } finally {
+    await pane.close();
+    await daemonClaiming();
+  }
+});
+
+/**
+ * The compatibility end, and the one this feature could have hung on.
+ *
+ * Every host up to 1.1.1 read nothing off the frame: it answered the port and
+ * the token to any message at all. So a 1.2.0 panel pressing Restart walkd at
+ * one of those gets a perfectly good token answer back, and `ok: true` would
+ * have the pane saying a daemon went away that is still serving. The host on
+ * disk below is that host — a faithful stand-in for 1.1.1's one reply, written
+ * here rather than fetched from git so a shallow clone can still run it — and
+ * what the press has to end in is the by-hand words, inside the ask timeout.
+ */
+test("a host older than the panel ends a Restart press in the by-hand words, not in a hang", async () => {
+  await daemonClaiming("0.1.0");
+  const pane = await freshPane(true);
+  const real = await fs.readFile(hostFile());
+  try {
+    // 1.1.1's host, in the words it would use: read the state file this host was
+    // installed for, read that daemon's token, and answer with both — whatever
+    // was asked.
+    await fs.writeFile(hostFile(), `"use strict";
+const fs = require("node:fs");
+const arg = n => { const i = process.argv.indexOf(n); return i > 1 ? process.argv[i + 1] : undefined; };
+let buf = Buffer.alloc(0);
+process.stdin.on("data", c => {
+  buf = Buffer.concat([buf, c]);
+  if (buf.length < 4) return;
+  if (buf.length < 4 + buf.readUInt32LE(0)) return;
+  process.stdin.pause();
+  const state = JSON.parse(fs.readFileSync(arg("--state-dir") + "/walkd.json", "utf8"));
+  const token = fs.readFileSync(state.dataDir + "/token", "utf8").trim();
+  const json = Buffer.from(JSON.stringify({ ok: true, port: state.port, token }), "utf8");
+  const head = Buffer.alloc(4);
+  head.writeUInt32LE(json.length, 0);
+  process.stdout.write(Buffer.concat([head, json]), () => process.exit(0));
+});
+setTimeout(() => process.exit(0), 10000);
+`);
+
+    // That host is good enough for the token op, which is what 1.1.1 was: the
+    // pane connects hands-free on it, exactly as it does on a current one.
+    await pane.panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 20_000 });
+    await expect(pane.panel.locator(".note.version button[data-restart]")).toBeVisible({ timeout: 20_000 });
+
+    await pane.panel.locator(".note.version button[data-restart]").click();
+    // One line, and the way that does work on screen without being asked for:
+    // this is the end where the person has to do it themselves.
+    await expect(pane.panel.locator(".note.version .said")).toHaveText("walkd did not stop.", { timeout: 15_000 });
+    await expect(pane.panel.locator(".note.version .said")).toHaveClass(/issue/);
+    await expect(pane.panel.locator(".note.version")).toContainText("Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.");
+    await expect(pane.panel.locator(".note.version code")).toHaveText("npx -y sidewalk-walkd stop");
+    await expect(pane.panel.locator(".note.version button[data-by-hand]")).toHaveCount(0);
+    expect(pane.panelLog.join("\n")).toContain("older than this panel");
+    // Nothing was stopped, which is the whole point: the daemon is still there.
+    expect(await healthy()).toBe(true);
+    await expect(pane.panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`);
+    console.log(`restart proof: a 1.1.1 host answered a stop with its token, and the pane said "walkd did not stop." with the by-hand way under it — no hang`);
+  } finally {
+    await fs.writeFile(hostFile(), real);
+    await pane.close();
+    await daemonClaiming();
   }
 });

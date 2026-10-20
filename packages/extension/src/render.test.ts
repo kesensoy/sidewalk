@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay } from "./render.js";
+import { BY_HAND_LINK, BY_HAND_PANEL, BY_HAND_WALKD, CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, RESTART_FAILED, RESTART_LABEL, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, UPDATE_ASKING, UPDATE_BY_BROWSER, UPDATE_FAILED, UPDATE_LABEL, UPDATE_NONE, UPDATE_THROTTLED, VERSION_MAY_NOT, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Mending } from "./render.js";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 
 const look = (id: string, seq: number, group?: string): Item => ({ id, seq, group, kind: "look", owner: "g", title: `T${id}`, url: "http://x/", do: "do", see: "see", pass: "pass", expect: [], addedAt: "2026-09-16T00:00:00Z" });
@@ -1030,18 +1030,149 @@ describe("first run and version notice", () => {
     expect(html).toContain(">Copy<");
     expect(INSTALL_COMMAND).toBe("claude mcp add --scope user sidewalk -- npx -y sidewalk-mcp");
   });
-  it("the version notice names both versions and the port, and offers the stop command", () => {
-    const html = renderVersionNotice("0.3.0", "0.2.0", 8760);
-    expect(html).toContain('class="note version"');
-    expect(html).toContain("This panel is 0.3.0 and walkd on port 8760 is 0.2.0.");
-    expect(html).toContain("reconnect the agent");
-    expect(html).toContain(`<code>${STOP_COMMAND}</code>`);
-    expect(html).toContain(`data-copy-text="${STOP_COMMAND}"`);
-    expect(html).toContain('aria-label="Copy the stop command"');
-    expect(STOP_COMMAND).toBe("npx -y sidewalk-walkd stop");
+  /**
+   * The notice said one thing to both cases until now — stop walkd — which is
+   * the remedy for one of them. So the direction is the first thing it says,
+   * and the button under it is the thing that does that half.
+   */
+  it("the version notice names the older half and offers the press that mends it", () => {
+    const walkdOld = renderVersionNotice("0.3.0", "0.2.0", 8760, { old: "walkd" });
+    expect(walkdOld).toContain('class="note version"');
+    expect(walkdOld).toContain("walkd on port 8760 is 0.2.0 and this panel is 0.3.0. walkd is the older half. They may not understand each other.");
+    expect(walkdOld).toContain(`>${RESTART_LABEL}<`);
+    expect(walkdOld).toContain('data-restart="1"');
+    expect(walkdOld).not.toContain("data-update");
+
+    const paneOld = renderVersionNotice("0.2.0", "0.3.0", 8760, { old: "panel", canUpdate: true });
+    expect(paneOld).toContain("This panel is 0.2.0 and walkd on port 8760 is 0.3.0. The panel is the older half. They may not understand each other.");
+    expect(paneOld).toContain(`>${UPDATE_LABEL}<`);
+    expect(paneOld).toContain('data-update="1"');
+    expect(paneOld).not.toContain("data-restart");
+
+    // Both versions and the port in either direction, and the facts in the same
+    // words: this is the one place a person can read them.
+    for (const html of [walkdOld, paneOld]) {
+      expect(html).toContain("0.2.0");
+      expect(html).toContain("0.3.0");
+      expect(html).toContain("port 8760");
+      // Neither one tells anybody to do anything by hand until they ask.
+      expect(html).toContain(`<button class="link" data-by-hand="1">${BY_HAND_LINK}</button>`);
+      expect(html).not.toContain("<code>");
+      expect(html).not.toContain("data-copy-text");
+      expect(html).not.toContain("chrome://");
+      expect(html).not.toContain("/mcp");
+      // Nothing is said about a press that has not happened, and the button is
+      // pressable.
+      expect(html).not.toContain('class="said');
+      expect(html).not.toContain("disabled");
+      expect(html).not.toMatch(/secure/i);
+    }
   });
+
+  /**
+   * The by-hand path is behind the link, not under the button: the owner's own
+   * shape for this, from the Connect slab — "the copyable command is 'hidden'
+   * behind a text and the reconnect is the auto path".
+   */
+  it("reveals the by-hand path only when it is asked for, with the command on the walkd half", () => {
+    const walkdOld = renderVersionNotice("0.3.0", "0.2.0", 8760, { old: "walkd", byHand: true });
+    // The sentence the notice used to say to everybody, kept word for word for
+    // the half it was always about. Escaped on the way in, like every other
+    // sentence here, which is why it is matched in two pieces.
+    expect(BY_HAND_WALKD).toBe("Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.");
+    expect(walkdOld).toContain("Stop walkd, then reconnect the agent");
+    expect(walkdOld).toContain("MCP server (/mcp in Claude Code); its next call starts a current one.");
+    expect(walkdOld).toContain(`<code>${STOP_COMMAND}</code>`);
+    expect(walkdOld).toContain(`data-copy-text="${STOP_COMMAND}"`);
+    expect(walkdOld).toContain('aria-label="Copy the stop command"');
+    expect(STOP_COMMAND).toBe("npx -y sidewalk-walkd stop");
+    // The button stays: the link is the other way, not a replacement for it.
+    expect(walkdOld).toContain('data-restart="1"');
+    // Spent: a link that has been pressed has done its job, and nothing here toggles.
+    expect(walkdOld).not.toContain("data-by-hand");
+
+    // The panel's by-hand path is a page in the browser's own chrome, and
+    // nothing in an extension can copy a person's way to it.
+    const paneOld = renderVersionNotice("0.2.0", "0.3.0", 8760, { old: "panel", canUpdate: true, byHand: true });
+    expect(paneOld).toContain("Open chrome://extensions and press Update.");
+    expect(paneOld).not.toContain("<code>");
+    expect(paneOld).not.toContain("data-copy-text");
+  });
+
+  /**
+   * Firefox has no `runtime.requestUpdateCheck` and an extension cannot open
+   * `about:addons`, so there is nothing to press and nothing to hide behind a
+   * link: the sentence is the whole answer. The walkd half is unaffected —
+   * native messaging works there once the doorhanger is accepted.
+   */
+  it("says where to look instead of offering a button on a browser that cannot check", () => {
+    const paneOld = renderVersionNotice("0.2.0", "0.3.0", 8760, { old: "panel", canUpdate: false });
+    expect(paneOld).toContain("The panel is the older half.");
+    expect(paneOld).toContain(UPDATE_BY_BROWSER);
+    expect(UPDATE_BY_BROWSER).toBe("Check for updates on your add-ons page.");
+    expect(paneOld).not.toContain("<button");
+    expect(paneOld).not.toContain("data-update");
+    expect(paneOld).not.toContain("data-by-hand");
+    expect(paneOld).not.toContain("chrome://");
+
+    // walkd being the older half is the same slab on both browsers.
+    const walkdOld = renderVersionNotice("0.3.0", "0.2.0", 8760, { old: "walkd", canUpdate: false });
+    expect(walkdOld).toContain('data-restart="1"');
+    expect(walkdOld).not.toContain(UPDATE_BY_BROWSER);
+  });
+
+  /**
+   * A patch apart is still drift worth knowing about, and nothing in the
+   * contract has ever moved on one — so the notice stands and the worry goes.
+   * Not a compatibility table: one clause, from one boolean.
+   */
+  it("drops the line about not understanding each other when only the patch differs", () => {
+    const soft = renderVersionNotice("1.1.2", "1.1.1", 8760, { old: "walkd", soft: true });
+    expect(soft).toContain("walkd on port 8760 is 1.1.1 and this panel is 1.1.2. walkd is the older half.");
+    expect(soft).not.toContain(VERSION_MAY_NOT);
+    // Everything else about the slab is the same, the button included.
+    expect(soft).toContain('data-restart="1"');
+    expect(renderVersionNotice("1.1.2", "1.1.1", 8760, { old: "walkd" })).toContain(VERSION_MAY_NOT);
+  });
+
+  /**
+   * One line per end of a press, in the issue colour for the ones that did not
+   * work. The two a Connect press already has words for keep them: the same
+   * browser refusing the same permission says the same thing.
+   */
+  it("says what came of a press of either button, and nothing when there was none", () => {
+    const restart = (m: Mending | undefined) => renderVersionNotice("0.3.0", "0.2.0", 8760, { old: "walkd", mending: m });
+    const update = (m: Mending | undefined) => renderVersionNotice("0.2.0", "0.3.0", 8760, { old: "panel", canUpdate: true, mending: m });
+
+    expect(restart("asking")).toContain(CONNECT_ASKING);
+    expect(restart("asking")).toContain("disabled");          // one press, one question
+    expect(update("asking")).toContain(UPDATE_ASKING);
+    expect(update("asking")).toContain("disabled");
+
+    expect(restart("refused")).toContain(CONNECT_REFUSED);
+    expect(restart("failed")).toContain(RESTART_FAILED);
+    expect(restart("failed")).toContain('class="said issue"');
+    expect(restart("failed")).not.toContain("disabled");
+
+    expect(update("none")).toContain(UPDATE_NONE);
+    expect(update("throttled")).toContain(UPDATE_THROTTLED);
+    expect(update("failed")).toContain(UPDATE_FAILED);
+    for (const m of ["none", "throttled", "failed"] as const) expect(update(m)).toContain('class="said issue"');
+
+    // Nothing worth a line when it worked: the daemon goes away, or the panel
+    // does, and the connection line is the whole of the news.
+    expect(restart(undefined)).not.toContain('class="said');
+    expect(update(undefined)).not.toContain('class="said');
+
+    // Short, plain, and none of them says "secure" or a tricolon's worth of advice.
+    for (const line of [RESTART_FAILED, UPDATE_ASKING, UPDATE_NONE, UPDATE_THROTTLED, UPDATE_FAILED, UPDATE_BY_BROWSER, BY_HAND_LINK, BY_HAND_PANEL, RESTART_LABEL, UPDATE_LABEL]) {
+      expect(line).not.toMatch(/secure/i);
+      expect(line.length).toBeLessThan(70);
+    }
+  });
+
   it("escapes a version string that is not ours", () => {
-    expect(renderVersionNotice("0.3.0", "<b>x</b>", 8760)).not.toContain("<b>");
+    expect(renderVersionNotice("0.3.0", "<b>x</b>", 8760, { old: "walkd" })).not.toContain("<b>");
   });
 
   // The daemon keeps its token in a file an extension cannot read, so this

@@ -1,5 +1,6 @@
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 import type { TokenCheck, WalkView } from "./protocol.js";
+import type { OldHalf } from "./version.js";
 import { replies, type Replies } from "./replies.js";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -320,16 +321,102 @@ export function renderFirstRun(port: number): string {
 /**
  * The pane and the daemon are not the same release (`version.ts` says when).
  * A warning, never a gate: a stale daemon still serves everything it does
- * understand, and refusing would strand a person mid-walk. The remedy is
- * both halves — the MCP process holds the old walkd and would start it again.
+ * understand, and refusing would strand a person mid-walk.
+ *
+ * It names which half is behind, because the remedy is the opposite thing in
+ * the two cases and this notice gave the walkd one to both. The shape is the
+ * Connect slab's: one sentence, one filled button, and under it the muted text
+ * button that reveals the by-hand path — the same ranking, for the same reason,
+ * which is that there is exactly one thing worth pressing here.
  */
 export const STOP_COMMAND = "npx -y sidewalk-walkd stop";
-export const versionNotice = (mine: string, theirs: string, port: number) =>
-  `This panel is ${mine} and walkd on port ${port} is ${theirs}. They may not understand each other. To match them, stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.`;
+/**
+ * The clause the patch-only case drops. Nothing in the contract has ever moved
+ * on a patch, so the drift is still said and the worry is not.
+ */
+export const VERSION_MAY_NOT = "They may not understand each other.";
+export const versionNotice = (mine: string, theirs: string, port: number, old: OldHalf, soft = false) =>
+  (old === "walkd"
+    ? `walkd on port ${port} is ${theirs} and this panel is ${mine}. walkd is the older half.`
+    : `This panel is ${mine} and walkd on port ${port} is ${theirs}. The panel is the older half.`) +
+  (soft ? "" : ` ${VERSION_MAY_NOT}`);
 
-export function renderVersionNotice(mine: string, theirs: string, port: number): string {
-  return `<section class="note version"><p>${esc(versionNotice(mine, theirs, port))}</p>` +
-    commandRow(STOP_COMMAND, `${COPY_LABEL} the stop command`) + `</section>`;
+/** The one thing to press, per direction. */
+export const RESTART_LABEL = "Restart walkd";
+export const UPDATE_LABEL = "Update the panel";
+/**
+ * Firefox has no `runtime.requestUpdateCheck`, and an extension cannot open
+ * `about:addons` either, so there is nothing to press and the sentence is the
+ * whole answer.
+ */
+export const UPDATE_BY_BROWSER = "Check for updates on your add-ons page.";
+/** The muted text button. The same rank and the same treatment as *Paste the token instead*. */
+export const BY_HAND_LINK = "Do it by hand instead";
+/**
+ * What the notice said to everybody until now, kept word for word for the half
+ * it was always about: the MCP process holds the old walkd and would start it
+ * again, so stopping the daemon is only half of it.
+ */
+export const BY_HAND_WALKD = "Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.";
+export const BY_HAND_PANEL = "Open chrome://extensions and press Update.";
+
+/** What a press of either button is in the middle of, or what came of it. */
+export type Mending = "asking" | "refused" | "failed" | "none" | "throttled";
+export const RESTART_FAILED = "walkd did not stop.";
+export const UPDATE_ASKING = "Asking Chrome…";
+export const UPDATE_NONE = "No newer panel in the store yet.";
+export const UPDATE_THROTTLED = "Chrome checked too recently. Try again in a few minutes.";
+export const UPDATE_FAILED = "Chrome would not check for an update.";
+
+/**
+ * One line per end, in the issue colour for the ones that did not work.
+ *
+ * The two that a Connect press already has words for keep them: a browser that
+ * refused the permission is `The browser did not allow it.` here too, and
+ * `Asking walkd…` is the same wait. Nothing is said when it worked — the daemon
+ * goes away, and the connection line is the whole of the news.
+ */
+export function mendSay(old: OldHalf, state: Mending | undefined): { text: string; cls: "" | "issue" } | null {
+  if (state === "asking") return { text: old === "walkd" ? CONNECT_ASKING : UPDATE_ASKING, cls: "" };
+  if (state === "refused") return { text: CONNECT_REFUSED, cls: "issue" };
+  if (state === "failed") return { text: old === "walkd" ? RESTART_FAILED : UPDATE_FAILED, cls: "issue" };
+  if (state === "none") return { text: UPDATE_NONE, cls: "issue" };
+  if (state === "throttled") return { text: UPDATE_THROTTLED, cls: "issue" };
+  return null;
+}
+
+export type VersionNotice = {
+  /** Which half is behind. */
+  old: OldHalf;
+  /** The patch number is the only difference. */
+  soft?: boolean;
+  /** Is there a `runtime.requestUpdateCheck` to press? Chrome yes, Firefox no. */
+  canUpdate?: boolean;
+  mending?: Mending;
+  /** The person asked for the by-hand path, so it is on screen instead of the link. */
+  byHand?: boolean;
+};
+
+export function renderVersionNotice(mine: string, theirs: string, port: number, o: VersionNotice): string {
+  // No button on the one browser that has nothing to offer: Firefox cannot ask
+  // itself to update and cannot open its own add-ons page, so the sentence says
+  // where to go and there is nothing left to hide behind a link.
+  const press = o.old === "walkd" ? "restart" : o.canUpdate ? "update" : null;
+  const words = versionNotice(mine, theirs, port, o.old, o.soft) + (press ? "" : ` ${UPDATE_BY_BROWSER}`);
+  const say = press ? mendSay(o.old, o.mending) : null;
+  const row = press
+    ? `<div class="connect"><button data-${press}="1"${o.mending === "asking" ? " disabled" : ""}>${press === "restart" ? RESTART_LABEL : UPDATE_LABEL}</button>` +
+      (say ? `<span class="said ${say.cls}" role="status">${esc(say.text)}</span>` : "") +
+      `</div>`
+    : "";
+  const byHand = !press ? ""
+    : o.byHand
+      ? `<p>${esc(o.old === "walkd" ? BY_HAND_WALKD : BY_HAND_PANEL)}</p>` +
+        // Only the walkd half has a command to run; the panel's by-hand path is a
+        // page in the browser's own chrome, which nothing here can copy.
+        (o.old === "walkd" ? commandRow(STOP_COMMAND, `${COPY_LABEL} the stop command`) : "")
+      : `<button class="link" data-by-hand="1">${BY_HAND_LINK}</button>`;
+  return `<section class="note version"><p>${esc(words)}</p>${row}${byHand}</section>`;
 }
 
 /**

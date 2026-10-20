@@ -85,7 +85,13 @@ describe("setMarkup on the pane's own markup", () => {
   });
 
   it("is the same on every notice and both empties", () => {
-    for (const html of [renderEmpty(), renderFirstRun(8760), renderTokenNotice(8760), renderVersionNotice("0.3.0", "0.2.0", 8760)]) {
+    const versions = [
+      renderVersionNotice("0.3.0", "0.2.0", 8760, { old: "walkd" }),
+      renderVersionNotice("0.3.0", "0.2.0", 8760, { old: "walkd", byHand: true, mending: "failed" }),
+      renderVersionNotice("0.2.0", "0.3.0", 8760, { old: "panel", canUpdate: true, mending: "none" }),
+      renderVersionNotice("0.2.0", "0.3.0", 8760, { old: "panel", canUpdate: false }),
+    ];
+    for (const html of [renderEmpty(), renderFirstRun(8760), renderTokenNotice(8760), ...versions]) {
       expect(viaMarkup(html).innerHTML).toBe(viaInnerHtml(html).innerHTML);
     }
   });

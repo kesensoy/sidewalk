@@ -320,16 +320,37 @@ is the one moment a person has been told nothing at all.
 
 You rarely start it by hand: `sidewalk-mcp` starts one if none is answering.
 
-**When the pane and the daemon are not the same release.** Chrome updates
-the extension on its own schedule; the daemon changes only when somebody
-restarts it, and `sidewalk-mcp` will not replace one that is answering. So the
-two drift, in either direction, and the pane says so under its header:
-*This panel is X and walkd on port 8760 is Y*, with the remedy. The remedy
-is both halves: stop the daemon (`npx -y sidewalk-walkd stop`, or `node
-packages/walkd/bin/walkd.js stop` from a checkout) **and** reconnect the
-agent's MCP server (`/mcp` in Claude Code) — the long-lived MCP process
-holds the old `walkd` and would start it again. The notice is a warning,
-not a gate: a stale daemon still serves everything it understands.
+**When the pane and the daemon are not the same release.** Chrome updates the
+extension on its own schedule; the daemon changes only when somebody restarts
+it, and `sidewalk-mcp` will not replace one that is answering. So the two drift,
+in either direction, and the pane says so under its header — **naming which half
+is behind**, because the remedy is the opposite thing in the two cases.
+
+*walkd on port 8760 is 1.1.1 and this panel is 1.2.0. walkd is the older half.*
+The button under it is **Restart walkd**: it asks walkd's own native messaging
+host to stop the daemon, and the agent's MCP process starts a current one on its
+next call. (The first press asks for the `nativeMessaging` permission, the same
+one Connect asks for, and the browser asks once per profile.)
+
+*This panel is 1.1.1 and walkd on port 8760 is 1.2.0. The panel is the older
+half.* The button is **Update the panel**: Chrome asks the store, and if a newer
+build is waiting the extension restarts onto it. A store that has nothing newer
+yet, or a check Chrome is rate-limiting, is said in one line under the button.
+Firefox has no such call and an extension cannot open `about:addons`, so there
+the sentence says to check for updates on your add-ons page and there is no
+button.
+
+Either way, *Do it by hand instead* is under the button: it reveals the way
+through that needs nothing pressed — `npx -y sidewalk-walkd stop` with a Copy
+button and the reminder to reconnect the agent's MCP server (`/mcp` in Claude
+Code), or *Open chrome://extensions and press Update*. It is behind a text
+button rather than on screen because the button above it is what most people
+want, and the slab has one accent to spend.
+
+The notice is a warning, not a gate: a stale daemon still serves everything it
+understands, and when the patch number is the only difference the notice is said
+without the line about the two halves maybe not understanding each other —
+nothing in the contract has ever moved on a patch.
 
 The daemon reads its version from its own `package.json`; `npm test` checks
 that the three packages and the manifest agree, and `node scripts/version.mjs
@@ -871,7 +892,7 @@ at the port it named. Nothing in the suite binds 8760 or 9340, and Chrome's
 remote debugging is 9341 — never 9222, which belongs to the chrome-devtools MCP. It refuses to start
 if something is already answering on 8761.
 
-Forty-two tests, one Chromium with the extension loaded unpacked, one walk per
+Forty-five tests, one Chromium with the extension loaded unpacked, one walk per
 test: an item arriving over SSE and Go navigating and highlighting; the verdict
 that carries its screenshot, build id and console tail; a capture wider than the
 cap; the gear's text size across a reload; a secret's value absent from the
@@ -893,8 +914,12 @@ console ring, newest last, last 20; verdicts queueing while the daemon is down;
 an item added after it restarts; and a refused verdict counted in the header
 with its card asking to be answered again; the install note on a port that has
 never answered, with the command on the clipboard once Copy is pressed; and a
-daemon that claims another release named in the pane with the remedy, gone once
-a matching one is back; and a walk's brief under its header, surviving a reopen
+daemon that claims an older release named as the older half, with *Restart
+walkd* and the stop command only once the by-hand link is pressed, gone once a
+matching one is back; and one that claims a newer one, where the panel is named
+instead and its button asks Chrome for an update — one line for a store with
+nothing newer and for a throttled check, and a restart for the answer that means
+a build is waiting; and a walk's brief under its header, surviving a reopen
 that carries none and replaced in place by one that carries a new one; a walk
 registering its content scripts for the port it named and a page on another
 loopback port getting none; and the hands-free token — a fresh profile with
@@ -911,9 +936,14 @@ press connects anyway because the panel asks the host itself, and a panel that
 reloaded with the press's own note set, which finishes it with nothing pressed;
 and the press as a person meets it on Chrome, with no method in either context,
 where the panel asks through a hidden frame and the pane connects without
-navigating, without a frame left behind, and with the receipt under the band.
+navigating, without a frame left behind, and with the receipt under the band;
+and *Restart walkd* pressed for real against a daemon that is the older half,
+which stops it through the host — the state file gone, the pane back to
+*Looking for walkd on 8761* — and pressed against a host older than the panel,
+which answers its token to anything and so ends in *walkd did not stop.* with
+the by-hand way under it, inside the ask timeout and not in a hang.
 
-The last six run a browser of their own, because what they are about is a
+The last eight run a browser of their own, because what they are about is a
 profile that has never been given anything. Two things they do that nothing else
 in the suite does: they load a copy of `dist` whose manifest asks for
 `nativeMessaging` outright (no automation can press Chrome's permission bubble,

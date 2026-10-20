@@ -1,8 +1,8 @@
 import type { ConnectAnswer, GoResult, SwState, SwToPanel, PanelToSw, TokenAnswer, TokenCheck, VerdictDraft } from "./protocol.js";
 import { NO_ACCESS_SAID, badSelectorLine } from "./expect.js";
-import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, SECRET_DOTS, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, applyChoices, drainPercent, needsText, needsTokenLine, receiptSay, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting } from "./render.js";
-import { type Area, ASK_TIMEOUT_MS, NATIVE_PERMISSION, armConnect, askHost, canAskHere, freshRuntime, takeArmed } from "./native.js";
-import { versionsDiffer } from "./version.js";
+import { COPIED_LABEL, COPIED_NOTE, COPY_LABEL, SECRET_DOTS, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, applyChoices, drainPercent, needsText, needsTokenLine, receiptSay, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Choices, type Connecting, type Mending } from "./render.js";
+import { type Area, type Stopped, ASK_TIMEOUT_MS, NATIVE_PERMISSION, armConnect, askHost, askStop, canAskHere, freshRuntime, takeArmed } from "./native.js";
+import { olderHalf, patchOnly } from "./version.js";
 import { setMarkup } from "./markup.js";
 import { DEFAULT_SCALE, DEFAULT_SHOTS, SCALES, UI_KEY, applyScale, nextScale, shotsOf, type Shots, type Ui } from "./settings.js";
 import { DEFAULT_PORT, TOKEN_KEY, parseToken } from "./port.js";
@@ -378,6 +378,41 @@ function openGear(focusField: boolean) {
 let connecting: Connecting | undefined;
 
 /**
+ * The same two things for the version notice: what a press of its one button is
+ * in the middle of, and whether the person has asked for the by-hand path.
+ *
+ * Panel-local for the reason above, and reset by `paint()` the moment the two
+ * halves stop disagreeing — a line about a press is about a notice that is on
+ * screen. `byHand` is one-way while it stands: a link that has been pressed has
+ * done its job, and nothing on this pane toggles.
+ */
+let mending: Mending | undefined;
+let byHand = false;
+
+/**
+ * The browser's own update check, if this browser has one.
+ *
+ * Chrome's alone: Firefox has never had `runtime.requestUpdateCheck`, and an
+ * extension cannot open `about:addons` either — so there the notice is words and
+ * no button, and this returns null. Asked of the runtime rather than of the
+ * manifest, because the question is what this browser can do.
+ *
+ * Read by name rather than written out as `chrome.runtime.requestUpdateCheck`,
+ * which is the one thing in this file that is a nod to a tool: `web-ext lint`
+ * flags that spelling on the Firefox build as an unsupported API, and what it
+ * would be flagging is a call this pane never makes there. The detection below
+ * is the real guard; the indirection keeps the packager's lint at the warnings
+ * the repo already knows about. (`CLAUDE.md`: a Chrome-only API in `panel.ts`
+ * gets a note. This is the note.)
+ */
+const UPDATE_CHECK = "requestUpdateCheck";
+function updateCheck(): (() => Promise<unknown>) | null {
+  const fn = (chrome.runtime as unknown as Record<string, unknown>)[UPDATE_CHECK];
+  return typeof fn === "function" ? fn as () => Promise<unknown> : null;
+}
+const canUpdatePanel = (): boolean => updateCheck() !== null;
+
+/**
  * Where the press's one piece of state lives across the reload below:
  * `storage.session` where there is one, so it cannot outlive the browser, and
  * `storage.local` otherwise. The flag carries its own age either way.
@@ -503,6 +538,94 @@ function paintConnect(answer: ConnectAnswer | undefined) {
 }
 
 /**
+ * *Restart walkd*, pressed, when the daemon is the older half.
+ *
+ * The same shape as the Connect press, because it is the same channel and the
+ * same browser rule: the permission needs the person's own click, so its promise
+ * is made in the click handler and handed here, and this page may hold the
+ * permission and still have no method to call — so a hidden frame of our own
+ * makes the call (`native.ts` `freshRuntime`).
+ *
+ * One difference at the end: there is no reload path. A reload is how the
+ * Connect press finishes on a browser the frame does not work on, and it works
+ * because the press leaves a note for the load to pick up; a stop has nothing to
+ * leave and nothing to store, so a frame without the method ends on the by-hand
+ * words instead — which is where that person needed to be anyway.
+ *
+ * Stopping is the whole of the remedy from here. The agent's MCP process holds
+ * the old walkd and starts a current one on its next call, which is why the
+ * button says Restart and the by-hand text still asks for the `/mcp` half: by
+ * hand, nothing is watching to start the next one.
+ */
+async function pressRestart(asking: Promise<boolean>) {
+  mending = "asking";
+  paint();
+  let granted = false;
+  try { granted = (await asking) === true; } catch { granted = false; }
+  if (!granted) { mending = "refused"; byHand = true; paint(); return; }
+  const port = state.port ?? DEFAULT_PORT;
+  if (canAskHere()) { paintRestart(await askStop(port)); return; }
+  const fresh = await freshRuntime(document).catch(() => null);
+  if (!fresh) { paintRestart({ ok: false, reason: "noApi" }); return; }
+  console.warn("sidewalk: this panel is older than the grant; asked walkd's host through a fresh frame");
+  // The frame stays until the answer or the timeout: one removed mid-call leaves
+  // this await hanging for good (measured).
+  try { paintRestart(await askStop(port, ASK_TIMEOUT_MS, fresh.runtime)); }
+  finally { fresh.drop(); }
+}
+
+/**
+ * What a stop came to.
+ *
+ * Nothing is said when it worked: the daemon is going away, and the pane's own
+ * no-daemon words are the next thing on screen. When it did not — a host older
+ * than this panel, a browser that cannot reach one at all, something else
+ * answering on the port — the way that does work goes on screen rather than
+ * staying behind a link, and the word behind the line goes to the console.
+ */
+function paintRestart(r: Stopped) {
+  if (!r.ok) console.warn(`sidewalk: walkd was not stopped (${r.reason}${r.said ? `: ${r.said}` : ""})`);
+  mending = r.ok ? undefined : "failed";
+  if (!r.ok) byHand = true;
+  paint();
+}
+
+/**
+ * *Update the panel*, pressed, when the panel is the older half.
+ *
+ * `requestUpdateCheck` is the only thing an extension can do about its own
+ * version, and it is Chrome's alone. `update_available` means the new build is
+ * downloaded and waiting for a restart, which `reload` is — so the pane goes
+ * away and comes back current, and nothing of a walk is lost that a reopen
+ * would not have lost anyway. The two other answers are not failures and each
+ * gets a line: a store with nothing newer yet, which is the ordinary case for a
+ * day or two after a release, and a check Chrome is rate-limiting.
+ *
+ * No permission to ask for, so no promise is handed in: there is nothing here
+ * that has to happen inside the gesture.
+ */
+async function pressUpdate() {
+  mending = "asking";
+  paint();
+  const ask = updateCheck();
+  if (!ask) { mending = "failed"; byHand = true; paint(); return; }
+  let status: unknown;
+  try {
+    const r = await ask.call(chrome.runtime);
+    // The promise form resolves `{status, version}` and the callback form passed
+    // the status on its own. Both are read, because a browser is free to be
+    // either and the one word is all this needs.
+    status = typeof r === "string" ? r : (r as { status?: unknown } | null)?.status;
+  } catch (e) {
+    console.warn("sidewalk: Chrome would not check for an update", e);
+  }
+  if (status === "update_available") { chrome.runtime.reload(); return; }
+  mending = status === "no_update" ? "none" : status === "throttled" ? "throttled" : "failed";
+  if (mending === "failed") console.warn(`sidewalk: the update check answered ${String(status)}`);
+  paint();
+}
+
+/**
  * The second half of a press that needed a reload to get the API.
  *
  * Read once and cleared, and only acted on while it is fresh, so a flag left by
@@ -585,6 +708,12 @@ function paint() {
   // The pane's own version is the manifest's. chrome.runtime.getManifest is
   // WebExtension-standard (Firefox has it), not Chrome-only.
   const mine = chrome.runtime.getManifest().version;
+  // Which half is behind, and only while a daemon is answering: a gap is not a
+  // disagreement, and the remedy for one is to wait.
+  const old = state.connected ? olderHalf(state.daemonVersion, mine) : null;
+  // Whatever the version notice's button was saying, and whether its by-hand
+  // path had been asked for, is about a notice that is no longer there.
+  if (!old) { mending = undefined; byHand = false; }
   // The notice is gone the moment the daemon lets the pane in, and so is
   // whatever the Connect button was saying: a press that worked has the
   // connection line to speak for it, and a press that did not has nothing left
@@ -603,7 +732,9 @@ function paint() {
   // in, nothing it might say about versions can be acted on.
   setMarkup(document.getElementById("notice")!, state.needsToken
     ? renderTokenNotice(port, connecting)
-    : state.connected && versionsDiffer(state.daemonVersion, mine) ? renderVersionNotice(mine, state.daemonVersion!, port) : "");
+    : old
+      ? renderVersionNotice(mine, state.daemonVersion!, port, { old, soft: patchOnly(state.daemonVersion, mine), canUpdate: canUpdatePanel(), mending, byHand })
+      : "");
   applyChoices(document, choices);
   syncVerdictButtons(document, drafts, choices);
   restoreFocus(document, focus);
@@ -710,6 +841,20 @@ document.addEventListener("click", async e => {
     void pressConnect(asking);
     return;
   }
+  // *Restart walkd*: the same permission, asked the same way, and for the same
+  // reason it cannot be asked any later than this.
+  if (b.dataset.restart !== undefined) {
+    let asking: Promise<boolean>;
+    try { asking = Promise.resolve(chrome.permissions.request({ permissions: [NATIVE_PERMISSION] })).then(g => g === true); }
+    catch (err) { console.warn("sidewalk: this browser would not be asked for the permission", err); asking = Promise.resolve(false); }
+    void pressRestart(asking);
+    return;
+  }
+  // *Update the panel*: no permission, so nothing has to happen inside the gesture.
+  if (b.dataset.update !== undefined) { void pressUpdate(); return; }
+  // *Do it by hand instead*: the way through that needs no button, revealed by
+  // the person asking for it rather than shown to everybody.
+  if (b.dataset.byHand !== undefined) { byHand = true; paint(); return; }
   // *Paste the token instead*: the other door, and the only thing on the pane
   // that asks for the field by name — so it opens the gear and goes there.
   if (b.dataset.paste !== undefined) { openGear(true); return; }

@@ -35,8 +35,17 @@ import { parseToken } from "./port.js";
 
 /** The host's name, as walkd spells it in every manifest it writes. */
 export const HOST_NAME = "sh.sidewalk.walkd";
-/** The one message the host understands. It reads nothing else off the frame. */
+/** Hand over the port and the token. The only message a host up to 1.1.1 understands. */
 export const ASK = { t: "token" } as const;
+/**
+ * Stop the daemon on `port`. The second op, since 1.2.0.
+ *
+ * The port is on the frame and the host refuses a stop that is not about the
+ * daemon it was registered for: one host serves the whole machine, so a pane on
+ * another port asking to stop walkd must not stop the one the person is using.
+ * Same reason `askHost` drops a token answered about somewhere else.
+ */
+export const STOP = (port: number) => ({ t: "stop", port }) as const;
 /**
  * The permission the host is behind, asked for only when the person presses
  * Connect.
@@ -116,6 +125,32 @@ function said(e: unknown, runtime: { lastError?: { message?: string } }): string
   return typeof last === "string" && last ? last : undefined;
 }
 
+/**
+ * One message out, one answer back, bounded.
+ *
+ * Shared by the two ops because the hard parts are the same for both: the
+ * feature detection, the timeout, and calling the method on the object it was
+ * read off. Not `try { runtime.sendNativeMessage(...) } catch`: without the
+ * permission the function is not there at all (measured), so the absence is the
+ * question, and asking it costs nothing.
+ */
+type Settled = { reply: unknown } | { failed: unknown } | { late: true } | { noApi: true };
+
+async function sendOne(message: unknown, timeoutMs: number, runtime: typeof chrome.runtime): Promise<Settled> {
+  const send = (runtime as { sendNativeMessage?: (host: string, message: unknown) => Promise<unknown> }).sendNativeMessage;
+  if (typeof send !== "function") return { noApi: true };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const settled = await Promise.race<Settled>([
+    (async () => {
+      try { return { reply: await send.call(runtime, HOST_NAME, message) }; }
+      catch (e) { return { failed: e }; }
+    })(),
+    new Promise<Settled>(r => { timer = setTimeout(() => r({ late: true }), timeoutMs); }),
+  ]);
+  clearTimeout(timer);
+  return settled;
+}
+
 /** Is the optional permission held? False, never a throw, when it cannot be asked. */
 export async function hasNativePermission(): Promise<boolean> {
   try {
@@ -145,23 +180,8 @@ export async function hasNativePermission(): Promise<boolean> {
  * (`freshRuntime`). Everything else about the call is the same.
  */
 export async function askHost(port: number, timeoutMs = ASK_TIMEOUT_MS, runtime: typeof chrome.runtime = chrome.runtime): Promise<Asked> {
-  // Not `try { runtime.sendNativeMessage(...) } catch`: without the permission
-  // the function is not there at all (measured), so the absence is the
-  // question, and asking it costs nothing.
-  const send = (runtime as { sendNativeMessage?: (host: string, message: unknown) => Promise<unknown> }).sendNativeMessage;
-  if (typeof send !== "function") return { ok: false, reason: "noApi" };
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  type Settled = { reply: unknown } | { failed: unknown } | { late: true };
-  const settled = await Promise.race<Settled>([
-    (async () => {
-      try { return { reply: await send.call(runtime, HOST_NAME, ASK) }; }
-      catch (e) { return { failed: e }; }
-    })(),
-    new Promise<Settled>(r => { timer = setTimeout(() => r({ late: true }), timeoutMs); }),
-  ]);
-  clearTimeout(timer);
-
+  const settled = await sendOne(ASK, timeoutMs, runtime);
+  if ("noApi" in settled) return { ok: false, reason: "noApi" };
   if ("late" in settled) return { ok: false, reason: "timeout" };
   if ("failed" in settled) {
     const words = said(settled.failed, runtime);
@@ -178,6 +198,47 @@ export async function askHost(port: number, timeoutMs = ASK_TIMEOUT_MS, runtime:
   const answered = r.port as number;
   if (answered !== port) return { ok: false, reason: "wrongPort", said: `the host answered about walkd on ${answered}` };
   return { ok: true, port: answered, token };
+}
+
+/** Either walkd is gone, or it is not and here is the word for the console. */
+export type Stopped = { ok: true } | { ok: false; reason: AskReason; said?: string };
+
+/**
+ * Ask the host to stop the daemon on `port`.
+ *
+ * The press behind this is *Restart walkd* in the version notice: the daemon is
+ * the older half, and the MCP process holding it starts a current one on its
+ * next call. Stopping is therefore the whole of what the pane has to do, and
+ * the person does not have to find a terminal to do it.
+ *
+ * **`stopped` is the evidence, not `ok`.** A host up to 1.1.1 read nothing off
+ * the frame and answered the token to any message at all, so a stop request
+ * against one comes back `{ok: true, port, token}` — which would have the pane
+ * saying a daemon went away that is still running. The marker is what tells a
+ * host that understood the question from one that did not, and a host that did
+ * not ends on the by-hand words, which is the honest finish.
+ *
+ * Nothing is stored here and nothing is read: unlike the token, a stop leaves
+ * the pane nothing to keep. What follows is the worker's next health check
+ * finding nothing, and the pane's own no-daemon words.
+ */
+export async function askStop(port: number, timeoutMs = ASK_TIMEOUT_MS, runtime: typeof chrome.runtime = chrome.runtime): Promise<Stopped> {
+  const settled = await sendOne(STOP(port), timeoutMs, runtime);
+  if ("noApi" in settled) return { ok: false, reason: "noApi" };
+  if ("late" in settled) return { ok: false, reason: "timeout" };
+  if ("failed" in settled) {
+    const words = said(settled.failed, runtime);
+    return { ok: false, reason: reasonOf(words), said: words };
+  }
+  const r = settled.reply as { ok?: unknown; stopped?: unknown; reason?: unknown } | null | undefined;
+  if (!r || typeof r !== "object") return { ok: false, reason: "unknown" };
+  // The host's own reasons — a state file it could not read, something else
+  // answering on that port, `unknownOp` from a host that knows the message
+  // types and not this one. One line on the pane for all of them; the word goes
+  // to the console.
+  if (r.ok !== true) return { ok: false, reason: "hostRefused", said: typeof r.reason === "string" ? r.reason : undefined };
+  if (r.stopped !== true) return { ok: false, reason: "unknown", said: "the host answered something other than a stop; it is older than this panel" };
+  return { ok: true };
 }
 
 /** What the pane holds at the moment an answer comes back. */
