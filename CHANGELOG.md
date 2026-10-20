@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.2.0 — 2026-10-20 — the version notice mends itself
+
+- **The notice names which half is behind, and offers the press that fixes
+  it.** When walkd is the older half the button is *Restart walkd*: the panel
+  asks walkd's native messaging host to stop the daemon, and the agent's next
+  call starts a current one. When the panel is the older half the button is
+  *Update the panel*: on Chrome it asks the browser to check the store and
+  reloads when a newer one is there; Firefox gets a sentence pointing at the
+  add-ons page. *Do it by hand instead* reveals the old words and the stop
+  command, and the one loop a stop cannot leave: if the daemon comes back as
+  the old one, the plugin is what to update. When only the patch number
+  differs the notice still says so but drops the worry.
+- **walkd's native messaging host can stop the daemon.** A second op beside
+  the token one, with the same checks `walkd stop` makes: the state file, a
+  health answer from that pid, SIGTERM, and on Windows the state file after.
+  A host older than this release answers the token to any message, which the
+  panel can tell apart from a stop.
+- **The MCP brings the host up to its own release.** An updated plugin meets
+  last week's daemon still running and reuses it; the host that daemon wrote
+  has no stop op. The MCP rewrites the host from its own copy of walkd, on
+  the default data directory only, and leaves the daemon alone.
+- **Save in the gear is dead until there is something to save.** A stored
+  token shows as dots, and an empty field beside a live Save read as a setting
+  nobody had filled in.
+
 ## 1.1.1 — 2026-10-19 — the pane opens at your size, and Windows stops clean
 
 - **The pane opens at the text size you chose.** It used to paint at 100 % and

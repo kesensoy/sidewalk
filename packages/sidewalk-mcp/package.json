@@ -1,6 +1,6 @@
 {
   "name": "sidewalk-mcp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "The MCP server that lets an AI agent write a sidewalk walkthrough a person walks in a Chrome side panel; starts the walkd daemon if none is answering",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/kesensoy/sidewalk.git", "directory": "packages/sidewalk-mcp" },
@@ -13,6 +13,6 @@
   "engines": { "node": ">=22" },
   "publishConfig": { "access": "public" },
   "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "npm run build" },
-  "dependencies": { "@modelcontextprotocol/sdk": "^1.30.0", "sidewalk-walkd": "1.1.1", "zod": "^4.1.0" },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.30.0", "sidewalk-walkd": "1.2.0", "zod": "^4.1.0" },
   "devDependencies": { "@types/node": "^22" }
 }
