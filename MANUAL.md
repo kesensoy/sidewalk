@@ -345,7 +345,10 @@ through that needs nothing pressed — `npx -y sidewalk-walkd stop` with a Copy
 button and the reminder to reconnect the agent's MCP server (`/mcp` in Claude
 Code), or *Open chrome://extensions and press Update*. It is behind a text
 button rather than on screen because the button above it is what most people
-want, and the slab has one accent to spend.
+want, and the slab has one accent to spend. On the walkd half it carries a
+second command for the loop a stop cannot leave — *If it comes back as the old
+one, update the plugin*, and `claude plugin update sidewalk@sidewalk` — because
+the plugin's pin is what decides which `walkd` the MCP starts next.
 
 **The MCP keeps the host current even when it cannot keep the daemon current.**
 *Restart walkd* is a press at walkd's native messaging **host**, and a host
@@ -928,7 +931,8 @@ an item added after it restarts; and a refused verdict counted in the header
 with its card asking to be answered again; the install note on a port that has
 never answered, with the command on the clipboard once Copy is pressed; and a
 daemon that claims an older release named as the older half, with *Restart
-walkd* and the stop command only once the by-hand link is pressed, gone once a
+walkd* and the stop and plugin-update commands only once the by-hand link is
+pressed, gone once a
 matching one is back; and one that claims a newer one, where the panel is named
 instead and its button asks Chrome for an update — one line for a store with
 nothing newer and for a throttled check, and a restart for the answer that means

@@ -359,6 +359,16 @@ export const BY_HAND_LINK = "Do it by hand instead";
  */
 export const BY_HAND_WALKD = "Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.";
 export const BY_HAND_PANEL = "Open chrome://extensions and press Update.";
+/**
+ * The loop nobody can leave on their own: the daemon is stopped, the agent's MCP
+ * starts the same old version again, and the notice comes straight back. What is
+ * behind that is a plugin that has not been updated — the MCP's pin is what
+ * decides which walkd gets started — so the way out is one more command, and it
+ * is here rather than in the sentence or on the button because it is the second
+ * thing to try and only if the first did not take.
+ */
+export const PLUGIN_COMMAND = "claude plugin update sidewalk@sidewalk";
+export const BY_HAND_PLUGIN = "If it comes back as the old one, update the plugin.";
 
 /** What a press of either button is in the middle of, or what came of it. */
 export type Mending = "asking" | "refused" | "failed" | "none" | "throttled";
@@ -412,9 +422,14 @@ export function renderVersionNotice(mine: string, theirs: string, port: number, 
   const byHand = !press ? ""
     : o.byHand
       ? `<p>${esc(o.old === "walkd" ? BY_HAND_WALKD : BY_HAND_PANEL)}</p>` +
-        // Only the walkd half has a command to run; the panel's by-hand path is a
-        // page in the browser's own chrome, which nothing here can copy.
-        (o.old === "walkd" ? commandRow(STOP_COMMAND, `${COPY_LABEL} the stop command`) : "")
+        // Only the walkd half has commands to run; the panel's by-hand path is a
+        // page in the browser's own chrome, which nothing here can copy. The
+        // second command is the one for a daemon that comes back as the old one.
+        (o.old === "walkd"
+          ? commandRow(STOP_COMMAND, `${COPY_LABEL} the stop command`) +
+            `<p>${esc(BY_HAND_PLUGIN)}</p>` +
+            commandRow(PLUGIN_COMMAND, `${COPY_LABEL} the plugin update command`)
+          : "")
       : `<button class="link" data-by-hand="1">${BY_HAND_LINK}</button>`;
   return `<section class="note version"><p>${esc(words)}</p>${row}${byHand}</section>`;
 }

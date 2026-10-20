@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BY_HAND_LINK, BY_HAND_PANEL, BY_HAND_WALKD, CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, RESTART_FAILED, RESTART_LABEL, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, UPDATE_ASKING, UPDATE_BY_BROWSER, UPDATE_FAILED, UPDATE_LABEL, UPDATE_NONE, UPDATE_THROTTLED, VERSION_MAY_NOT, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Mending } from "./render.js";
+import { BY_HAND_LINK, BY_HAND_PANEL, BY_HAND_PLUGIN, BY_HAND_WALKD, PLUGIN_COMMAND, CONNECT_ASKING, CONNECT_FAILED, CONNECT_LABEL, CONNECT_REFUSED, CONNECT_STALE, INSTALL_COMMAND, RECEIPT_HOST, RECEIPT_PASTE, RECEIPT_WORD, RESTART_FAILED, RESTART_LABEL, TOKEN_PLACEHOLDER, TOKEN_STORED_DESC, NOTHING_LEFT, NOTHING_OPEN, SECRET_DOTS, STOP_COMMAND, TOKEN_COMMAND, UPDATE_ASKING, UPDATE_BY_BROWSER, UPDATE_FAILED, UPDATE_LABEL, UPDATE_NONE, UPDATE_THROTTLED, VERSION_MAY_NOT, WALK_CLOSED, applyChoices, connectSay, receiptSay, groupItems, itemState, needsText, needsTokenLine, questionSections, renderEmpty, renderFirstRun, renderTokenHow, renderTokenNotice, renderVersionNotice, renderWalk, restoreFocus, snapshotFocus, syncVerdictButtons, tokenSay, type Mending } from "./render.js";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
 
 const look = (id: string, seq: number, group?: string): Item => ({ id, seq, group, kind: "look", owner: "g", title: `T${id}`, url: "http://x/", do: "do", see: "see", pass: "pass", expect: [], addedAt: "2026-09-16T00:00:00Z" });
@@ -1086,6 +1086,19 @@ describe("first run and version notice", () => {
     expect(walkdOld).toContain(`data-copy-text="${STOP_COMMAND}"`);
     expect(walkdOld).toContain('aria-label="Copy the stop command"');
     expect(STOP_COMMAND).toBe("npx -y sidewalk-walkd stop");
+
+    // The loop nobody can leave on their own: the daemon is stopped, the agent's
+    // MCP starts the same old version again, and the notice comes back. The
+    // plugin is what pins which walkd that is, so the second command is here —
+    // after the stop, because it is the thing to try only if the stop did not
+    // take, and nowhere near the sentence or the button.
+    expect(BY_HAND_PLUGIN).toBe("If it comes back as the old one, update the plugin.");
+    expect(walkdOld).toContain(`<p>${BY_HAND_PLUGIN}</p>`);
+    expect(PLUGIN_COMMAND).toBe("claude plugin update sidewalk@sidewalk");
+    expect(walkdOld).toContain(`<code>${PLUGIN_COMMAND}</code>`);
+    expect(walkdOld).toContain(`data-copy-text="${PLUGIN_COMMAND}"`);
+    expect(walkdOld).toContain('aria-label="Copy the plugin update command"');
+    expect(walkdOld.indexOf(STOP_COMMAND)).toBeLessThan(walkdOld.indexOf(BY_HAND_PLUGIN));
     // The button stays: the link is the other way, not a replacement for it.
     expect(walkdOld).toContain('data-restart="1"');
     // Spent: a link that has been pressed has done its job, and nothing here toggles.
@@ -1165,7 +1178,7 @@ describe("first run and version notice", () => {
     expect(update(undefined)).not.toContain('class="said');
 
     // Short, plain, and none of them says "secure" or a tricolon's worth of advice.
-    for (const line of [RESTART_FAILED, UPDATE_ASKING, UPDATE_NONE, UPDATE_THROTTLED, UPDATE_FAILED, UPDATE_BY_BROWSER, BY_HAND_LINK, BY_HAND_PANEL, RESTART_LABEL, UPDATE_LABEL]) {
+    for (const line of [RESTART_FAILED, UPDATE_ASKING, UPDATE_NONE, UPDATE_THROTTLED, UPDATE_FAILED, UPDATE_BY_BROWSER, BY_HAND_LINK, BY_HAND_PANEL, BY_HAND_PLUGIN, RESTART_LABEL, UPDATE_LABEL]) {
       expect(line).not.toMatch(/secure/i);
       expect(line.length).toBeLessThan(70);
     }

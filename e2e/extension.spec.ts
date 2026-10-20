@@ -1394,7 +1394,10 @@ test("a daemon older than the pane says so, offers Restart walkd, and hides the 
   await expect(panel.locator(".note.version code")).toHaveCount(0);
   await panel.locator(".note.version button[data-by-hand]").click();
   await expect(panel.locator(".note.version")).toContainText("Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.");
-  await expect(panel.locator(".note.version code")).toHaveText("npx -y sidewalk-walkd stop");
+  // Two commands, in order: the stop, and then the one for the loop a stop
+  // cannot leave — an old plugin pins the old walkd, and the MCP starts it again.
+  await expect(panel.locator(".note.version")).toContainText("If it comes back as the old one, update the plugin.");
+  await expect(panel.locator(".note.version code")).toHaveText(["npx -y sidewalk-walkd stop", "claude plugin update sidewalk@sidewalk"]);
   await expect(panel.locator(".note.version button[data-by-hand]")).toHaveCount(0);
   // And the button is still there: the link is the other way, not a replacement.
   await expect(panel.locator(".note.version button[data-restart]")).toBeVisible();
@@ -2051,6 +2054,11 @@ test("Restart walkd stops the older daemon through the host, and the pane falls 
  * disk below is that host — a faithful stand-in for 1.1.1's one reply, written
  * here rather than fetched from git so a shallow clone can still run it — and
  * what the press has to end in is the by-hand words, inside the ask timeout.
+ *
+ * The MCP brings the host up to its own release when it meets an older daemon
+ * (`sidewalk-mcp/src/host.ts`), so in the field this is now the narrow case: a
+ * daemon on a data directory of its own, or a host that could not be written.
+ * It is still the end that must not hang, which is why it is held here.
  */
 test("a host older than the panel ends a Restart press in the by-hand words, not in a hang", async () => {
   await daemonClaiming("0.1.0");
@@ -2091,7 +2099,7 @@ setTimeout(() => process.exit(0), 10000);
     await expect(pane.panel.locator(".note.version .said")).toHaveText("walkd did not stop.", { timeout: 15_000 });
     await expect(pane.panel.locator(".note.version .said")).toHaveClass(/issue/);
     await expect(pane.panel.locator(".note.version")).toContainText("Stop walkd, then reconnect the agent's MCP server (/mcp in Claude Code); its next call starts a current one.");
-    await expect(pane.panel.locator(".note.version code")).toHaveText("npx -y sidewalk-walkd stop");
+    await expect(pane.panel.locator(".note.version code")).toHaveText(["npx -y sidewalk-walkd stop", "claude plugin update sidewalk@sidewalk"]);
     await expect(pane.panel.locator(".note.version button[data-by-hand]")).toHaveCount(0);
     expect(pane.panelLog.join("\n")).toContain("older than this panel");
     // Nothing was stopped, which is the whole point: the daemon is still there.
