@@ -3,6 +3,7 @@ import fs from "node:fs/promises"; import os from "node:os"; import path from "n
 import { WalkStore, createHttpServer, tokenPath, writeToken } from "sidewalk-walkd";
 import type { AddressInfo } from "node:net";
 import { DaemonClient } from "./client.js";
+import { resetHostRefresh } from "./host.js";
 
 let server: ReturnType<typeof createHttpServer>; let client: DaemonClient; let dataDir: string; let base: string;
 beforeAll(async () => {
@@ -106,6 +107,59 @@ describe("DaemonClient", () => {
     // Nothing answering at all is undefined too, not a throw: the tool call
     // after this one says so itself.
     expect(await new DaemonClient("http://127.0.0.1:1", dataDir).viewers()).toBeUndefined();
+  });
+
+  /**
+   * The rollout shape, end to end through `connect`.
+   *
+   * Somebody updates the plugin and the daemon from last week is still
+   * answering, so this process reuses it rather than starting the version it
+   * ships — and the native messaging host on disk is the one that old daemon
+   * wrote, with no stop op in it. The panel's *Restart walkd* button is a press
+   * at that host, so the host is brought up to this release while the daemon is
+   * left exactly as it is. `host.ts` has the whole reasoning; what is held here
+   * is that `connect` asks the question with this daemon's own directories.
+   */
+  it("brings walkd's native messaging host up to this release when it meets an older daemon", async () => {
+    const old = createHttpServer(new WalkStore(dataDir), { version: "0.0.1" });
+    await new Promise<void>(r => old.listen(0, "127.0.0.1", r));
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "walkd-oldhost-"));
+    await fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({
+      port: (old.address() as AddressInfo).port, pid: process.pid, dataDir, startedAt: new Date().toISOString() }));
+    await writeToken(dataDir, "a-token-the-old-daemon-serves");
+    try {
+      const calls: { dataDir: string; stateDir: string }[] = [];
+      const refresh = async (o: { dataDir: string; stateDir: string }) => {
+        calls.push(o);
+        return { dir: "", hostJs: "", wrapper: "", node: "", wrote: [], registry: [], skipped: [], failed: [], registers: true };
+      };
+      resetHostRefresh();
+      const found = await DaemonClient.connect({ stateDir, autoStart: false, refresh, theDefault: dataDir });
+      expect(found.started).toBe(false);
+      expect(calls).toEqual([{ dataDir, stateDir }]);
+
+      // A daemon of this release wrote a host of this release; there is nothing
+      // to add, and this must not go near anybody's files to find that out.
+      resetHostRefresh();
+      calls.length = 0;
+      await fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({
+        port: (server.address() as AddressInfo).port, pid: process.pid, dataDir, startedAt: new Date().toISOString() }));
+      await DaemonClient.connect({ stateDir, autoStart: false, refresh, theDefault: dataDir });
+      expect(calls).toEqual([]);
+
+      // And an older daemon on a data dir of its own — a recording, an
+      // experiment, this suite — owns no registration and gets nothing written
+      // for it, the same rule the daemon itself follows.
+      resetHostRefresh();
+      await fs.writeFile(path.join(stateDir, "walkd.json"), JSON.stringify({
+        port: (old.address() as AddressInfo).port, pid: process.pid, dataDir, startedAt: new Date().toISOString() }));
+      await DaemonClient.connect({ stateDir, autoStart: false, refresh, theDefault: "/not/this/one" });
+      expect(calls).toEqual([]);
+    } finally {
+      await new Promise<void>(r => old.close(() => r()));
+      await fs.rm(stateDir, { recursive: true, force: true });
+      resetHostRefresh();
+    }
   });
 });
 

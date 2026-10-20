@@ -347,6 +347,19 @@ Code), or *Open chrome://extensions and press Update*. It is behind a text
 button rather than on screen because the button above it is what most people
 want, and the slab has one accent to spend.
 
+**The MCP keeps the host current even when it cannot keep the daemon current.**
+*Restart walkd* is a press at walkd's native messaging **host**, and a host
+older than 1.2.0 has no stop op in it at all. The common case puts exactly that
+on disk: you update the plugin, so the MCP is current, and the daemon from last
+week is still answering — so the MCP reuses it rather than starting the version
+it ships, and the host beside it is the old one. But the host is not the daemon.
+It is two small files, rewritten from scratch at every `walkd serve`, and the
+version that matters is the version of the code that writes them. So an MCP that
+finds a daemon older than its own `sidewalk-walkd` rewrites the host and leaves
+the daemon alone: once per process, on the default data directory only (the same
+rule the daemon follows — a `--data-dir` of its own owns no registration), and
+any failure is one line on stderr and nothing else.
+
 The notice is a warning, not a gate: a stale daemon still serves everything it
 understands, and when the patch number is the only difference the notice is said
 without the line about the two halves maybe not understanding each other —

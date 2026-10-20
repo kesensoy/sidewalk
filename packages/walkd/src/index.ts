@@ -13,3 +13,8 @@ export { TOKEN_ENV, TOKEN_FILE, bearer, newToken, readToken, tokenFromEnv, token
 // can check that the ids it ships are the ids walkd writes into the manifests.
 // The extension is the only other half that has to agree with these.
 export { CHROME_ORIGINS, FIREFOX_EXTENSIONS, HOST_NAME, NATIVE_ROOT_ENV } from "./native.js";
+// The writer itself, for `sidewalk-mcp`: an MCP that finds an older daemon
+// already answering brings the host up to its own release without touching that
+// daemon, because the stop op the panel's Restart walkd button presses lives in
+// the host and not in the daemon (`sidewalk-mcp/src/host.ts` says why).
+export { writeNativeHost, type NativeReport } from "./native.js";

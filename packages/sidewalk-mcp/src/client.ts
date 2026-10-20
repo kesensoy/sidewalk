@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { readState, readToken, tokenFromEnv, defaultStateDir, defaultDataDir } from "sidewalk-walkd";
+import { refreshHostIfStale, type RefreshOptions } from "./host.js";
 import type { Item, ItemInput, Verdict, Walk, WalkInput } from "sidewalk-walkd/schema";
 
 export class DaemonClient {
@@ -32,13 +33,16 @@ export class DaemonClient {
    * `opts.spawn` is the seam the test uses instead of starting a real daemon;
    * nothing in the product passes it.
    */
-  static async connect(opts: { stateDir?: string; autoStart?: boolean; spawn?: typeof spawn } = {}): Promise<DaemonClient> {
+  static async connect(opts: { stateDir?: string; autoStart?: boolean; spawn?: typeof spawn; refresh?: RefreshOptions["write"]; theDefault?: string } = {}): Promise<DaemonClient> {
     const stateDir = opts.stateDir ?? defaultStateDir();
+    // The health answer, not only the fact that there was one: its `version` is
+    // what says whether the native messaging host on disk predates the stop op
+    // the panel's Restart walkd button presses (`host.ts`).
     const healthy = async () => { const s = await readState(stateDir); if (!s) return null;
-      try { const h = await (await fetch(`http://127.0.0.1:${s.port}/health`)).json(); return h.ok ? s : null; } catch { return null; } };
-    let s = await healthy();
+      try { const h = await (await fetch(`http://127.0.0.1:${s.port}/health`)).json(); return h.ok ? { s, version: h.version as unknown } : null; } catch { return null; } };
+    let found = await healthy();
     let started = false;
-    if (!s && opts.autoStart !== false) {
+    if (!found && opts.autoStart !== false) {
       const bin = path.join(path.dirname(createRequire(import.meta.url).resolve("sidewalk-walkd/package.json")), "bin", "walkd.js");
       // No `--no-copy` here, and that is the point of this release. This daemon
       // is started behind the person's back, with `stdio: "ignore"`, so the
@@ -52,9 +56,17 @@ export class DaemonClient {
       const child = (opts.spawn ?? spawn)(process.execPath, [bin, "serve", "--state-dir", stateDir], { detached: true, stdio: "ignore" });
       child.unref();
       started = true;
-      for (let i = 0; i < 50 && !s; i++) { await new Promise(r => setTimeout(r, 100)); s = await healthy(); }
+      for (let i = 0; i < 50 && !found; i++) { await new Promise(r => setTimeout(r, 100)); found = await healthy(); }
     }
-    if (!s) throw new Error("walkd is not running and could not be started (run `walkd serve`)");
+    if (!found) throw new Error("walkd is not running and could not be started (run `walkd serve`)");
+    const s = found.s;
+    // A daemon older than this process's own `sidewalk-walkd` wrote a native
+    // messaging host older than it too, and the panel's Restart walkd button is
+    // a press at that host. So the host is brought up to this release and the
+    // daemon is left exactly as it is — `host.ts` has the whole reasoning, and
+    // the default data dir is the only place it happens. Nothing here can fail
+    // the connection.
+    if (!started) await refreshHostIfStale({ daemonVersion: found.version, dataDir: s.dataDir, stateDir, write: opts.refresh, theDefault: opts.theDefault });
     // The token, from the daemon's own data dir — the state file is where that
     // dir is named, and this process is on the same machine by design. It is
     // read on every connect, never cached between runs: the daemon keeps its
