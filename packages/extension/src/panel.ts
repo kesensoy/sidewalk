@@ -120,6 +120,26 @@ function setShots(next: Shots) {
 const tokenField = () => document.getElementById("token") as HTMLInputElement | null;
 
 /**
+ * Save, as the field stands: dead while there is nothing in it to save.
+ *
+ * Because the stored token lives in the *placeholder*, the field beside a live
+ * Save is empty whenever one is stored — and the owner, 2026-10-20: "i primarily
+ * don't want it to look like it's a missing setting". It is also the same rule
+ * as the verdict buttons' (`syncVerdictButtons`): a button that cannot do
+ * anything says so by being dead, and `saveToken` on an empty field does
+ * nothing. Trimmed, because `parseToken` is what would be saved.
+ *
+ * Every place that changes the field calls this: the `input` listener below
+ * (paste, typing, a drop, an autofill), `paintTokenField`, `saveToken` once its
+ * check is in, and `openGear`.
+ */
+function syncTokenSave() {
+  const field = tokenField();
+  const button = document.getElementById("token-save") as HTMLButtonElement | null;
+  if (field && button) button.disabled = !parseToken(field.value);
+}
+
+/**
  * How long the gear waits for the worker's answer before it says there was none.
  *
  * The worker's own floor is the 10 s it gives a daemon that accepts a connection
@@ -257,13 +277,16 @@ function sayGo(r: GoResult | null) {
  * token before it says anything in green.
  *
  * An empty Save does nothing: there is no token to check, and the status line
- * already says the daemon wants one.
+ * already says the daemon wants one. The button is dead while the field is empty
+ * (`syncTokenSave`), so that is Enter or a blur on an empty field, and the guard
+ * below is what makes it a no-op.
  */
 async function saveToken() {
   const field = tokenField();
   if (!field) return;
   const token = parseToken(field.value);
-  field.value = token;
+  field.value = token;                                 // a field of spaces is now an empty one
+  syncTokenSave();
   if (!token) return;
   const mine = ++checking;
   const button = document.getElementById("token-save") as HTMLButtonElement | null;
@@ -275,7 +298,6 @@ async function saveToken() {
   try { await chrome.storage.local.set({ [TOKEN_KEY]: token }); } catch { /* the answer below is still the daemon's */ }
   const answer = await askAboutToken();
   if (mine !== checking) return;                       // a later Save owns the line now
-  if (button) button.disabled = false;
   sayToken(answer.check, answer.port);
   // The same receipt as the host door, because it is the same event: walkd has
   // let the pane in. The gear's own line stays too — that one is the verdict on
@@ -293,6 +315,10 @@ async function saveToken() {
   // A refused token is a paste that has to happen again, so the field is where
   // the hand already is, with the wrong one selected for the next paste to replace.
   if (answer.check === "refused") { field.focus(); field.select(); }
+  // The check is over, so Save follows the field again rather than the check: a
+  // connected answer emptied it, which leaves Save dead; a refused one left the
+  // wrong token in it to be pasted over, which leaves Save a button.
+  syncTokenSave();
 }
 
 /**
@@ -359,9 +385,13 @@ setInterval(tickDrains, DRAIN_TICK_MS);
  * somebody asking for the field, and after a press that did not work, which is
  * the pane offering the form rather than making them find it. A press that is
  * still going, or one that worked, leaves it exactly as they had it.
+ *
+ * Every open comes through here, the gear button's own press included, so the
+ * state Save opens in is settled in one place.
  */
 function openGear(focusField: boolean) {
   document.getElementById("prefs")!.hidden = false;
+  syncTokenSave();
   if (!focusField) return;
   const field = tokenField();
   field?.focus();
@@ -670,6 +700,7 @@ function paintTokenField() {
     delete field.dataset.stored;
     field.removeAttribute("aria-describedby");
   }
+  syncTokenSave();
 }
 
 function paint() {
@@ -761,6 +792,9 @@ chrome.runtime.onMessage.addListener((m: SwToPanel) => {
 
 document.addEventListener("input", e => {
   const t = e.target as HTMLTextAreaElement;
+  // However the token got there — pasted, typed, dropped, filled in by the
+  // browser — Save is a button from the first character.
+  if (t.id === "token") { syncTokenSave(); return; }
   if (!t.dataset.note) return;
   drafts.set(t.dataset.note, t.value);
   syncVerdictButtons(document, drafts, choices);
@@ -858,7 +892,9 @@ document.addEventListener("click", async e => {
   // *Paste the token instead*: the other door, and the only thing on the pane
   // that asks for the field by name — so it opens the gear and goes there.
   if (b.dataset.paste !== undefined) { openGear(true); return; }
-  if (b.id === "settings") { const p = document.getElementById("prefs")!; p.hidden = !p.hidden; return; }
+  // Opening goes through `openGear` so that Save opens as the field stands, in
+  // the one place that decides it; closing is the same toggle it always was.
+  if (b.id === "settings") { const p = document.getElementById("prefs")!; if (p.hidden) openGear(false); else p.hidden = true; return; }
   if (b.id === "token-save") { await saveToken(); return; }
   if (b.id === "scale-down") { stepScale(-1); return; }
   if (b.id === "scale-up") { stepScale(1); return; }

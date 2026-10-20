@@ -255,7 +255,9 @@ the paste are in the same place. The gear opens itself only after a press that
 did not work, and never over a press that did. Once a token is stored the field
 shows a row of dots and holds nothing: the panel never keeps a copy of the
 token, so there is none on screen, none in a screenshot of the pane, and none to
-go stale. Pasting over the dots replaces it. It does not climb a reconnect ladder for it:
+go stale. Pasting over the dots replaces it, and Save is dead until there is
+something in the field to save — an empty field with a live button beside it
+reads as a setting nobody has filled in yet. It does not climb a reconnect ladder for it:
 waiting changes nothing, and saving the token in the gear reconnects at once. A
 verdict clicked meanwhile is not lost. A 401 is not a refusal the queue buries,
 so the verdict goes as soon as the token lands. **Save in the gear is a check**:
