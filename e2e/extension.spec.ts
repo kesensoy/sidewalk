@@ -1244,10 +1244,15 @@ test("pasting the token into the gear is what lets the pane in", async () => {
   await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "paste it here");
   await expect(panel.locator("#prefs #token")).not.toHaveAttribute("data-stored", "1");
   await expect(panel.locator("#prefs #token-how code")).toHaveText("npx -y sidewalk-walkd token --copy");
+  // Save is dead on a field with nothing in it, so an empty field never reads as
+  // a setting still waiting on the person.
+  await expect(panel.locator("#token-save")).toBeDisabled();
 
   // The paste itself, into the gear, with the trailing newline a terminal copy
   // brings along; Save is the button beside the field.
   await panel.locator("#prefs #token").fill(`${token}\n`);
+  // Something to save, so there is a button to press.
+  await expect(panel.locator("#token-save")).toBeEnabled();
   // Nothing on that row is pushed off the pane by a 43-character token.
   for (const sel of ["#prefs #token", "#token-save"]) {
     const box = await panel.locator(sel).boundingBox();
@@ -1272,7 +1277,10 @@ test("pasting the token into the gear is what lets the pane in", async () => {
   await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "••••••••••••");
   await expect(panel.locator("#prefs #token")).toHaveAttribute("data-stored", "1");
   await expect(panel.locator("#prefs #token-how")).toBeHidden();
-  console.log(`field proof: after the paste the field holds no value and shows ${"••••••••••••"}, and the gear's command row is gone`);
+  // The field it left behind is empty, so Save is dead again: the dots are the
+  // setting, not an empty box with a live button beside it.
+  await expect(panel.locator("#token-save")).toBeDisabled();
+  console.log(`field proof: after the paste the field holds no value and shows ${"••••••••••••"}, and the gear's command row is gone, with Save dead over the empty field`);
 
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator('header[data-walk-id="w-paste"]')).toHaveCount(1, { timeout: 15_000 });
@@ -1312,9 +1320,13 @@ test("a Save is a check: a wrong token is refused out loud and the pane stays ou
   await panel.evaluate(() => chrome.runtime.sendMessage({ t: "panel:hello" }));
   await expect(panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`, { timeout: 15_000 });
   await openGear(panel);
+  // However the gear was opened, it opens with Save dead over an empty field.
+  await expect(panel.locator("#prefs #token")).toHaveValue("");
+  await expect(panel.locator("#token-save")).toBeDisabled();
 
   // The other thing on the clipboard, saved.
   await panel.locator("#prefs #token").fill("not-this-daemons-token");
+  await expect(panel.locator("#token-save")).toBeEnabled();
   await panel.locator("#token-save").click();
   await expect(panel.locator("#token-said")).toHaveText("walkd refused this token.", { timeout: 15_000 });
   await expect(panel.locator("#token-said")).toHaveClass("issue");
@@ -1322,7 +1334,8 @@ test("a Save is a check: a wrong token is refused out loud and the pane stays ou
   await expect(panel.locator("#status")).toContainText(`walkd on ${PORT} needs the token`);
   await expect(panel.locator('header[data-walk-id="w-check"]')).toHaveCount(0);
   // Save is a button again, and the field has the hand and the wrong token in it,
-  // so the next paste replaces it.
+  // so the next paste replaces it — a refused check ends with something still in
+  // the field, which is something still to save.
   await expect(panel.locator("#token-save")).toBeEnabled();
   await expect(panel.locator("#prefs #token")).toBeFocused();
 
@@ -1335,6 +1348,7 @@ test("a Save is a check: a wrong token is refused out loud and the pane stays ou
   await expect(panel.locator("#prefs #token")).toHaveValue("");
   await expect(panel.locator("#prefs #token")).toHaveAttribute("placeholder", "••••••••••••");
   await expect(panel.locator("#prefs #token")).toHaveAttribute("data-stored", "1");
+  await expect(panel.locator("#token-save")).toBeDisabled();
   await expect(panel.locator("#status")).toContainText(`Connected to walkd on ${PORT}`, { timeout: 15_000 });
   await expect(panel.locator('[data-item="ck-a"]')).toBeVisible({ timeout: 15_000 });
 });
@@ -1356,8 +1370,8 @@ test("a Save with nothing answering on the port says so in no colour at all, and
 
   // And a Save against that port has nothing to ask, which it must not dress up
   // as a verdict on the token. The token goes in again first: the one that
-  // worked above left the field the moment walkd accepted it, and a Save on an
-  // untouched field is a no-op by design.
+  // worked above left the field the moment walkd accepted it, and Save over an
+  // empty field is dead by design.
   await expect(panel.locator("#prefs #token")).toHaveValue("");
   await panel.locator("#prefs #token").fill(token);
   await panel.locator("#token-save").click();
