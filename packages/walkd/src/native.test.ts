@@ -681,7 +681,10 @@ describe("the host program's stop op", () => {
     // A child that does nothing but stay alive, so a signal is the only thing
     // that ends it and its exit is the proof the host sent one.
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-    const gone = new Promise<string>(r => child.once("exit", (_c, sig) => r(String(sig))));
+    // Windows has no signals: a "SIGTERM" there is TerminateProcess, and the
+    // child exits with a code and no signal name, so the proof there is that
+    // it exited at all (CI, windows-latest, 2026-10-21).
+    const gone = new Promise<string>(r => child.once("exit", (code, sig) => r(process.platform === "win32" ? (code === null && sig === null ? "alive" : "SIGTERM") : String(sig))));
     const body = JSON.stringify(health(child.pid!));
     const server = http.createServer((_q, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(body); });
     await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
