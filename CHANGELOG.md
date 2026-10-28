@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.1 — 2026-10-28 — a note never asks, and an empty wait says what is left
+
+- **An empty `walk_wait` carries `open`.** The ids of the cards still waiting
+  on the person and of the asks still waiting on the agent, worked out by the
+  rule the pane itself uses: no verdict yet, or the latest is an undo, or the
+  latest is an ask the agent has answered. Notes are never counted. Both lists
+  empty means nothing on the pane can answer, and the instructions now say
+  so: add cards or say once in chat what you need, and do not poll in silence.
+- **The instructions say what a note cannot do.** An info has one button,
+  Dismiss, and a dismiss tells the agent nothing; a question is a question
+  card, and something the person must do is a sequence or a look with a pass
+  to press. A card with a verdict is closed, so the rest of a half-done
+  sequence is a new card. An ask gets a reply only when the agent has the
+  answer, because any reply closes it; an ask that reads two ways gets a
+  question whose options are the readings. A card carries every input the
+  person needs. The same sentences sit in the walk-author skill, pinned by
+  the sync test.
+
 ## 1.2.0 — 2026-10-20 — the version notice mends itself
 
 - **The notice names which half is behind, and offers the press that fixes

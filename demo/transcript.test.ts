@@ -290,10 +290,10 @@ it("quotes the ask's reply line exactly as the MCP server produces it", () => {
   expect(all).toContain('"itemId": "lp-share"');
   expect(all).toContain(`"text": "${ASK_TEXT}"`);
   expect(ASK_TEXT).toBe("Is the link meant to end with a slash?");
-  // Three wrapped lines, which join back to `replyLine("lp-share")` to the
+  // Five wrapped lines, which join back to `replyLine("lp-share")` to the
   // character. If `ask.ts` changes its wording this fails, which is the point.
   const at = lines.findIndex((l: string) => l.includes('"reply"'));
-  const reply = joinWrapped(lines.slice(at, at + 3)).replace(/^"reply": "/, "").replace(/"$/, "");
+  const reply = joinWrapped(lines.slice(at, at + 5)).replace(/^"reply": "/, "").replace(/"$/, "");
   expect(reply).toBe(replyLine("lp-share"));
   expect(lines.at(-1)).toContain('"closed": false');
 });

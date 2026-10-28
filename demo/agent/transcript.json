@@ -158,7 +158,9 @@
         { "tone": "resultCont", "text": "    \"screenshotPath\": \"…\"," },
         { "tone": "resultCont", "text": "    \"reply\": \"Answer in the pane: add an info or question item on this walk, in the" },
         { "tone": "resultCont", "text": "              same group as lp-share, with supersedes set to lp-share. That is what" },
-        { "tone": "resultCont", "text": "              marks the ask answered. The person is reading the pane, not your chat.\"" },
+        { "tone": "resultCont", "text": "              marks the ask answered. The person is reading the pane, not your chat. Reply" },
+        { "tone": "resultCont", "text": "              only when you have the answer; if the ask can be read two ways, make it a" },
+        { "tone": "resultCont", "text": "              question whose options are the readings.\"" },
         { "tone": "resultCont", "text": "  } ], \"cursor\": {{cursor3}}, \"closed\": false }" }
       ]
     },
