@@ -109,6 +109,25 @@ describe("the viewer count the agent is told", () => {
     expect(empty.viewers).toBe(0);
   });
 
+  it("says on an empty wait what the pane still holds: cards on the person, asks on the agent", async () => {
+    // Walk 16: an hour of empty waits with every card already answered. The
+    // list is the daemon's, so the agent cannot misremember a closed card.
+    await open("open-wait");
+    await store.addItems("open-wait", [
+      { id: "a", kind: "look", owner: "gate", title: "a", url: "http://127.0.0.1:9340/", do: "d", see: "s", pass: "p", expect: [] },
+      { id: "b", kind: "look", owner: "gate", title: "b", url: "http://127.0.0.1:9340/", do: "d", see: "s", pass: "p", expect: [] },
+      { id: "n", kind: "info", owner: "gate", title: "n", body: "b" } ]);
+    const ctx = { url: "http://127.0.0.1:9340/", viewport: [1, 1] as [number, number], console: [], userAgent: "ua" };
+    await store.addVerdict("open-wait", { itemId: "a", kind: "issue", text: "hairline", nonce: "nonce-0003", context: ctx });
+    await store.addVerdict("open-wait", { itemId: "b", kind: "ask", text: "which one?", nonce: "nonce-0004", context: ctx });
+    const empty = text(await mcp.callTool({ name: "walk_wait", arguments: { walk: "open-wait", after: 2, timeoutMs: 0 } }));
+    expect(empty.verdicts).toEqual([]);
+    expect(empty.open).toEqual({ cards: [], asks: ["b"] });
+    await store.addItems("open-wait", [{ id: "b-reply", kind: "info", owner: "gate", title: "r", body: "this one", supersedes: "b" }]);
+    const again = text(await mcp.callTool({ name: "walk_wait", arguments: { walk: "open-wait", after: 2, timeoutMs: 0 } }));
+    expect(again.open).toEqual({ cards: ["b"], asks: [] });
+  });
+
   it("stays off a wait that carries verdicts: a person has already answered", async () => {
     await open("viewers-answered");
     await store.addItems("viewers-answered", [{ id: "a", kind: "info", owner: "gate", title: "a", body: "b" }]);
@@ -117,6 +136,7 @@ describe("the viewer count the agent is told", () => {
     const answered = text(await mcp.callTool({ name: "walk_wait", arguments: { walk: "viewers-answered", after: 0, timeoutMs: 0 } }));
     expect(answered.verdicts).toHaveLength(1);
     expect(answered.viewers).toBeUndefined();
+    expect(answered.open).toBeUndefined();
   });
 
   it("says in the instructions what an agent is to do about a 0, and never asks for the token", () => {

@@ -17,9 +17,11 @@ Some clients cut long instructions short, so these come before everything else.
   `walk_wait(after: cursor, timeoutMs: 0)` whenever other work you are running
   reports back, `walk_wait(…, timeoutMs: 280000)` when nothing else is running, looping on the
   returned cursor. An empty wait is not news: call it again and say nothing.
-  Never stop listening because of silence. The one exception: when no card
-  awaits a verdict (`walk_read` shows it) the pane has nothing for the person,
-  so add cards or say once in chat what you need, and do not poll in silence.
+  Never stop listening because of silence. The one exception: an empty wait
+  carries `open`, the ids of the cards still waiting on the person and of the
+  asks still waiting on you; when both are empty the pane has nothing for the
+  person, so add cards or say once in chat what you need, and do not poll in
+  silence.
 - An ask is answered **in the pane**: reply with a new `info` or `question`
   item with `supersedes` set to the asked item's id — that is what marks the
   ask answered. The person is reading the pane, not your chat. An answer that is only in chat

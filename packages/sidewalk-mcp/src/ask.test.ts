@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Item, Verdict } from "sidewalk-walkd/schema";
-import { openAsks, replyLine, withReply } from "./ask.js";
+import { openAsks, replyLine, stillOpen, withReply } from "./ask.js";
 
 const look = (id: string, seq: number, extra: Partial<Item> = {}): Item =>
   ({ id, kind: "look", owner: "gate", title: id, url: "http://127.0.0.1:9340/", do: "d", see: "s", pass: "p",
@@ -89,5 +89,33 @@ describe("openAsks", () => {
     const items = [look("a", 1), look("b", 2), look("c", 3)];
     const asks = openAsks(items, [v("c", "ask", 1, "third"), v("a", "ask", 2, "first")]);
     expect(asks.map(x => x.item)).toEqual(["a", "c"]);
+  });
+});
+
+describe("stillOpen", () => {
+  // Walk 16 (2026-10-27): the agent polled for an hour believing a card was
+  // open after its verdict had closed it. This is the daemon's list of what the
+  // person can still answer, so the agent never has to remember it.
+  it("lists a card with no verdict yet, and drops it once one lands", () => {
+    expect(stillOpen([look("a", 1), look("b", 2)], [v("b", "issue", 1, "hairline")])).toEqual({ cards: ["a"], asks: [] });
+    expect(stillOpen([look("a", 1)], [v("a", "pass", 1)])).toEqual({ cards: [], asks: [] });
+    expect(stillOpen([look("a", 1)], [v("a", "skip", 1)])).toEqual({ cards: [], asks: [] });
+  });
+  it("never counts a note: its one press is a Dismiss, which answers nothing", () => {
+    expect(stillOpen([info("n", 1)], [])).toEqual({ cards: [], asks: [] });
+    expect(stillOpen([info("n", 1)], [v("n", "dismiss", 1)])).toEqual({ cards: [], asks: [] });
+  });
+  it("puts an open ask under asks, and the card back under cards once the agent has answered it", () => {
+    const asked = [v("a", "ask", 1, "got an idea")];
+    expect(stillOpen([look("a", 1)], asked)).toEqual({ cards: [], asks: ["a"] });
+    const answered = [look("a", 1), info("a-reply", 2, { supersedes: "a", addedAt: "2026-10-04T00:01:00.000Z" })];
+    expect(stillOpen(answered, asked)).toEqual({ cards: ["a"], asks: [] });
+  });
+  it("reopens a card on an undo, and ignores the pane's own blocked lines", () => {
+    expect(stillOpen([look("a", 1)], [v("a", "pass", 1), v("a", "undo", 2)])).toEqual({ cards: ["a"], asks: [] });
+    expect(stillOpen([look("a", 1)], [v("a", "blocked", 1)])).toEqual({ cards: ["a"], asks: [] });
+  });
+  it("leaves a withdrawn card out", () => {
+    expect(stillOpen([look("a", 1, { withdrawnAt: "2026-10-04T00:01:00.000Z", withdrawReason: "wrong" })], [])).toEqual({ cards: [], asks: [] });
   });
 });

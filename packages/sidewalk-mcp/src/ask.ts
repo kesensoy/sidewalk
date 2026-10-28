@@ -17,7 +17,7 @@
  * the same question, so there is one copy of the rule and this is a re-export
  * of it.
  */
-export { openAsks, type OpenAsk } from "sidewalk-walkd";
+export { openAsks, stillOpen, type OpenAsk, type Open } from "sidewalk-walkd";
 
 export const replyLine = (itemId: string) =>
   `Answer in the pane: add an info or question item on this walk, in the same group as ${itemId}, with supersedes set to ${itemId}. That is what marks the ask answered. The person is reading the pane, not your chat. Reply only when you have the answer; if the ask can be read two ways, make it a question whose options are the readings.`;

@@ -64,3 +64,39 @@ export function openAsks(items: Item[], verdicts: Verdict[]): OpenAsk[] {
   }
   return out;
 }
+
+/** What an empty wait says is still open: cards waiting on the person, asks waiting on the agent. */
+export type Open = { cards: string[]; asks: string[] };
+
+/**
+ * The ids of the cards still waiting on the person, and of the asks still
+ * waiting on the agent, so an empty `walk_wait` can say whether anything on
+ * the pane can answer it at all. On one walk the agent polled for an hour
+ * believing a card was open after its verdict had closed it, and the only
+ * press left on the pane was a note's Dismiss. A count the agent remembers
+ * is a count it can get wrong; this is the daemon's.
+ *
+ * The rule is the pane's own (`itemState` in the extension): a card is open
+ * while it has no verdict but `blocked`, or its latest is an `undo`, or its
+ * latest is an `ask` the agent has answered (the card is back in front of the
+ * person). An open ask is the agent's, not the person's, so it is listed under
+ * `asks` and not `cards`. A note (`info`) only ever takes a Dismiss, and a
+ * Dismiss tells the agent nothing, so notes are never counted. Withdrawn
+ * items are out.
+ */
+export function stillOpen(items: Item[], verdicts: Verdict[]): Open {
+  const asks = new Set(openAsks(items, verdicts).map(a => a.item));
+  const latest = new Map<string, Verdict>();
+  for (const v of verdicts) {
+    if (v.kind === "blocked") continue;
+    const seen = latest.get(v.itemId);
+    if (!seen || v.seq > seen.seq) latest.set(v.itemId, v);
+  }
+  const cards: string[] = [];
+  for (const i of items) {
+    if (i.withdrawnAt || i.kind === "info" || asks.has(i.id)) continue;
+    const v = latest.get(i.id);
+    if (!v || v.kind === "undo" || v.kind === "ask") cards.push(i.id);
+  }
+  return { cards, asks: [...asks] };
+}

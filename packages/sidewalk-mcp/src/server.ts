@@ -4,7 +4,7 @@ import { z } from "zod";
 import { itemInputSchema, walkInputSchema } from "sidewalk-walkd/schema";
 import type { DaemonClient } from "./client.js";
 import { INSTRUCTIONS } from "./instructions.js";
-import { openAsks, withReply } from "./ask.js";
+import { openAsks, stillOpen, withReply } from "./ask.js";
 
 /** What the MCP handshake tells a client this server is, kept the package's
  *  own so it cannot drift from the number npm shows. From dist/server.js and
@@ -37,7 +37,7 @@ export function buildServer(client: DaemonClient): McpServer {
     inputSchema: { walk: z.string(), itemId: z.string(), reason: z.string() },
   }, (a) => run(() => client.withdraw(a.walk, a.itemId, a.reason)));
   s.registerTool("walk_wait", {
-    description: "Block until new verdicts arrive after cursor `after`, or timeoutMs elapses (0 = drain now, max 280000 (≈4.6 min); loop for longer). Returns {verdicts, cursor, closed}, plus viewers when it comes back empty. Screenshots are file paths. An `ask` verdict carries a `reply` line: do what it says.",
+    description: "Block until new verdicts arrive after cursor `after`, or timeoutMs elapses (0 = drain now, max 280000 (≈4.6 min); loop for longer). Returns {verdicts, cursor, closed}, plus viewers and open when it comes back empty: open.cards are the ids of cards still waiting on the person, open.asks the asks still waiting on you; both empty means nothing on the pane can answer you, so stop waiting and add cards or say in chat what you need. Screenshots are file paths. An `ask` verdict carries a `reply` line: do what it says.",
     inputSchema: { walk: z.string(), after: z.number().int().min(0), timeoutMs: z.number().int().min(0).max(280000) },
   }, (a) => run(async () => {
     const r = await client.wait(a.walk, a.after, a.timeoutMs);
@@ -46,7 +46,10 @@ export function buildServer(client: DaemonClient): McpServer {
     // a person already, and needs no telling.
     if (r.verdicts.length === 0) {
       const viewers = await client.viewers();
-      return viewers === undefined ? r : { ...r, viewers };
+      // And what the pane still holds: the daemon's list, not the agent's
+      // memory of it. A read that fails leaves the field off, as viewers does.
+      const open = await client.read(a.walk, 0).then(w => stillOpen(w.items, w.verdicts)).catch(() => undefined);
+      return { ...r, ...(viewers === undefined ? {} : { viewers }), ...(open === undefined ? {} : { open }) };
     }
     const project = await client.projectOf(a.walk);
     return { ...r, verdicts: r.verdicts.map(v => withReply({ ...v, screenshotPath: client.shotPath({ project, id: a.walk }, v) })) };
