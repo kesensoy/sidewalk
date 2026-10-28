@@ -152,6 +152,10 @@ describe("the walk-author skill the plugin ships", () => {
       "walk_open returns it, and so does a walk_wait that comes back empty. started: true on walk_open means this session started walkd itself, so the person has seen nothing about it at all.",
       "A verdict's text is the person's words verbatim: quote it, never paraphrase or trim it.",
       "Nothing can push to you.",
+      "An info never asks the person for anything: its one button is Dismiss, and a dismiss tells you nothing. A decision is a question; something the person must do is a sequence or look with a pass to press. A card with a verdict is closed: the rest of a half-done sequence is a new card.",
+      "Reply only when you have the answer: a holding reply closes the ask and the pane shows it as answered. An ask you can read two ways gets a question whose options are the readings.",
+      "The one exception: when no card awaits a verdict (walk_read shows it) the pane has nothing for the person, so add cards or say once in chat what you need, and do not poll in silence.",
+      "A card carries every input the person needs: the channel, the key, the file. A step that is yours to do, do before the card goes up.",
     ];
     for (const sentence of BOTH) {
       expect(guide, `instructions.ts is missing: ${sentence}`).toContain(flat(sentence));

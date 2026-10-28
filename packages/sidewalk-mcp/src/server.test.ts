@@ -172,7 +172,7 @@ describe("an ask, as the agent receives it", () => {
     await store.addVerdict("asks", { itemId: "a", kind: "ask", text: "which build is this?", nonce: "n-ask-1", context: ctx });
     await store.addVerdict("asks", { itemId: "b", kind: "pass", text: "ok", nonce: "n-ask-2", context: ctx });
     const waited = text(await mcp.callTool({ name: "walk_wait", arguments: { walk: "asks", after: 0, timeoutMs: 0 } }));
-    expect(waited.verdicts[0].reply).toBe("Answer in the pane: add an info or question item on this walk, in the same group as a, with supersedes set to a. That is what marks the ask answered. The person is reading the pane, not your chat.");
+    expect(waited.verdicts[0].reply).toBe("Answer in the pane: add an info or question item on this walk, in the same group as a, with supersedes set to a. That is what marks the ask answered. The person is reading the pane, not your chat. Reply only when you have the answer; if the ask can be read two ways, make it a question whose options are the readings.");
     expect("reply" in waited.verdicts[1]).toBe(false);
     const read = text(await mcp.callTool({ name: "walk_read", arguments: { walk: "asks" } }));
     expect(read.verdicts[0].reply).toContain("Answer in the pane");

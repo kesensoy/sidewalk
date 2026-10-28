@@ -12,9 +12,10 @@
  */
 export const INSTRUCTIONS = `sidewalk: you write a walkthrough of a running web app; a person walks it in a Chrome side panel beside the live site; their verdicts come back to you as data.
 
-FIRST — the four lines the loop cannot run without. Some clients cut long instructions short, so these come before everything else.
-- Nothing can push to you. walk_wait is how you hear the person: walk_wait(after: cursor, timeoutMs: 0) whenever other work you are running reports back, walk_wait(…, timeoutMs: 280000) when nothing else is running, looping on the returned cursor. An empty wait is not news: call it again and say nothing. Never stop listening because of silence.
-- An ask is answered IN THE PANE: reply with a new info or question item with supersedes set to the asked item's id — that is what marks the ask answered. The person is reading the pane, not your chat. An answer that is only in chat never reaches them.
+FIRST — the five lines the loop cannot run without. Some clients cut long instructions short, so these come before everything else.
+- Nothing can push to you. walk_wait is how you hear the person: walk_wait(after: cursor, timeoutMs: 0) whenever other work you are running reports back, walk_wait(…, timeoutMs: 280000) when nothing else is running, looping on the returned cursor. An empty wait is not news: call it again and say nothing. Never stop listening because of silence. The one exception: when no card awaits a verdict (walk_read shows it) the pane has nothing for the person, so add cards or say once in chat what you need, and do not poll in silence.
+- An ask is answered IN THE PANE: reply with a new info or question item with supersedes set to the asked item's id — that is what marks the ask answered. The person is reading the pane, not your chat. An answer that is only in chat never reaches them. Reply only when you have the answer: a holding reply closes the ask and the pane shows it as answered. An ask you can read two ways gets a question whose options are the readings.
+- An info never asks the person for anything: its one button is Dismiss, and a dismiss tells you nothing. A decision is a question; something the person must do is a sequence or look with a pass to press. A card with a verdict is closed: the rest of a half-done sequence is a new card.
 - A verdict's text is the person's words verbatim: quote it, never paraphrase or trim it.
 - An undo verdict means unwind what you built on the answer it retracts, and expect a fresh one on the same item.
 
@@ -30,9 +31,10 @@ ITEM KINDS
 - sequence: ONE page, 2–8 steps done in order, each step "do" → "see". Use it whenever the person presses, then tries something, then tries something else on the same page: a lock that is set then tested then cleared, a control that is dragged then tapped then reloaded. The person ticks each step as it works and gives one verdict for the card; the verdict's \`steps\` tells you which were ticked, so an issue says where it broke. Optional \`pass\`: the one line that makes the whole thing a pass. Do NOT write one look card per step of one path.
 - look: one thing to judge on one page: url, do (what they do), see (what they should see), pass (the one line that makes it a pass).
 - question: a decision: title + 2–4 options, the recommended option FIRST (the pane tags it). A question the person can answer in ten seconds is a title and its options, nothing else — that is the default. The sheet sections (eli5, proposal, why, downsides, facts, recommendation, costIfWrong) are for a decision that is genuinely big, and every one you fill needs a reason. Investigate before asking; facts is where that work goes.
-- info: a note; the person dismisses it. Use it to say a piece of work landed, or to answer an ask. Not for orientation: that is the walk's brief.
+- info: a note; the person dismisses it. Use it to say a piece of work landed, or to answer an ask in full. It never asks for anything. Not for orientation: that is the walk's brief.
 
 WRITING ITEMS
+- A card carries every input the person needs: the channel, the key, the file. A step that is yours to do, do before the card goes up.
 - url is the exact page the item lives on, not the site root. Preconditions in \`expect\` (url regex / present css / text css+equals|contains) keep a not-ready page off the screen: the pane files a \`blocked\` verdict itself, naming what failed, instead of showing a broken item. A page that never answers files nothing. A css or url string the browser refuses files a \`blocked\` verdict carrying the browser's message, so a typo in one comes back to you. What a text expect reports back — seen, and the buildId on every verdict — is cut off at 300 characters.
 - target ({ text } / { css } / { walkId }) outlines the thing to look at after Go.
 - group is the feature or workstream the item belongs to; cards are grouped under it. The pane shows the newest group at the top, so the first group you add ends up at the bottom as more land — nothing you name a group changes that. "Read this first" goes in the walk's brief, never in a leading info card.

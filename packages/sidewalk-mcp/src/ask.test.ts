@@ -14,7 +14,7 @@ const v = (itemId: string, kind: Verdict["kind"], seq: number, text = ""): Verdi
 describe("the reply line on an ask", () => {
   it("tells the agent to answer in the pane, naming the item", () => {
     expect(replyLine("w13-q1")).toBe(
-      "Answer in the pane: add an info or question item on this walk, in the same group as w13-q1, with supersedes set to w13-q1. That is what marks the ask answered. The person is reading the pane, not your chat.");
+      "Answer in the pane: add an info or question item on this walk, in the same group as w13-q1, with supersedes set to w13-q1. That is what marks the ask answered. The person is reading the pane, not your chat. Reply only when you have the answer; if the ask can be read two ways, make it a question whose options are the readings.");
   });
   it("goes on an ask verdict and on nothing else", () => {
     const asked = withReply(v("a", "ask", 1, "which build is this?"));

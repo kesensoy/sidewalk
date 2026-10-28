@@ -20,7 +20,7 @@
 export { openAsks, type OpenAsk } from "sidewalk-walkd";
 
 export const replyLine = (itemId: string) =>
-  `Answer in the pane: add an info or question item on this walk, in the same group as ${itemId}, with supersedes set to ${itemId}. That is what marks the ask answered. The person is reading the pane, not your chat.`;
+  `Answer in the pane: add an info or question item on this walk, in the same group as ${itemId}, with supersedes set to ${itemId}. That is what marks the ask answered. The person is reading the pane, not your chat. Reply only when you have the answer; if the ask can be read two ways, make it a question whose options are the readings.`;
 
 /** The `reply` line on an `ask`, and nothing added to any other kind. */
 export function withReply<V extends { kind: string; itemId: string }>(v: V): V & { reply?: string } {

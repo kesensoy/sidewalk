@@ -9,7 +9,7 @@ The same text ships as the sidewalk MCP server's instructions, so an agent that
 connects has it already. This file is for projects that want it in their tree.
 Change `packages/sidewalk-mcp/src/instructions.ts` and this file together.
 
-## First — the four lines the loop cannot run without
+## First — the five lines the loop cannot run without
 
 Some clients cut long instructions short, so these come before everything else.
 
@@ -17,11 +17,19 @@ Some clients cut long instructions short, so these come before everything else.
   `walk_wait(after: cursor, timeoutMs: 0)` whenever other work you are running
   reports back, `walk_wait(…, timeoutMs: 280000)` when nothing else is running, looping on the
   returned cursor. An empty wait is not news: call it again and say nothing.
-  Never stop listening because of silence.
+  Never stop listening because of silence. The one exception: when no card
+  awaits a verdict (`walk_read` shows it) the pane has nothing for the person,
+  so add cards or say once in chat what you need, and do not poll in silence.
 - An ask is answered **in the pane**: reply with a new `info` or `question`
   item with `supersedes` set to the asked item's id — that is what marks the
   ask answered. The person is reading the pane, not your chat. An answer that is only in chat
-  never reaches them.
+  never reaches them. Reply only when you have the answer: a holding reply
+  closes the ask and the pane shows it as answered. An ask you can read two
+  ways gets a question whose options are the readings.
+- An `info` never asks the person for anything: its one button is Dismiss,
+  and a dismiss tells you nothing. A decision is a `question`; something the
+  person must do is a `sequence` or `look` with a pass to press. A card with a
+  verdict is closed: the rest of a half-done sequence is a new card.
 - A verdict's `text` is the person's words verbatim: quote it, never paraphrase
   or trim it.
 - An `undo` verdict means unwind what you built on the answer it retracts, and
@@ -77,10 +85,13 @@ nobody.
   fill needs a reason. Investigate before asking; `facts` is where that work
   goes.
 - **info** — a note; the person dismisses it. Use it to say a piece of work landed, or
-  to answer an ask. Not for orientation: that is the walk's brief.
+  to answer an ask in full. It never asks for anything. Not for orientation:
+  that is the walk's brief.
 
 ## Writing items
 
+- A card carries every input the person needs: the channel, the key, the
+  file. A step that is yours to do, do before the card goes up.
 - `url` is the exact page the item lives on, not the site root.
 - `expect` preconditions (`url` regex / `present` css / `text` css +
   equals|contains) keep a not-ready page off the screen: the pane files a
